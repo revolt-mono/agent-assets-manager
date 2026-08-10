@@ -1,0 +1,13 @@
+# local dev
+.agents
+.claude
+.codex
+.mcp.json
+refs
+
+# build
+node_modules
+dist
+out
+*.log*
+.DS_Store
