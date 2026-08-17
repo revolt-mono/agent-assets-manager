@@ -10,7 +10,6 @@ import {
   ItemMedia,
   ItemTitle
 } from '@renderer/components/ui/item'
-import { SidebarTrigger } from '@renderer/components/ui/sidebar'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from '@renderer/components/ui/toast'
@@ -57,7 +56,6 @@ export function SkillsPage(): React.JSX.Element {
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
           <TabsList>
             {Object.values(AGENTS).map((item) => (
               <TabsTrigger key={item.id} value={item.id}>
