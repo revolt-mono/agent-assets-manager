@@ -9,9 +9,9 @@
 
 ## Engineering rules
 
-- Choose the simplest correct implementation for current requirements. Extract shared logic only when genuine duplication or a shared invariant demands the abstraction; keep one-off code inline.
+- Choose the simplest correct implementation for current requirements. Only extract shared logic for genuine duplication or when a shared invariant demands the abstraction. Inline one-off/trivial wrappers.
 - Build in layers: start from the smallest version that works end to end, then add each capability on top of a working product.
-- Keep components modular, concerns separated, and code self-explanatory. Rewrite unclear logic rather than defending a design with comments.
+- Keep code self-explanatory. Rewrite unclear logic rather than defending a design with comments.
 - Preserve runtime behavior during formatting, lint, typing, and test-structure changes.
 
 ## Boundaries
