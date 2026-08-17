@@ -1,5 +1,5 @@
 export const AGENTS = {
-  codex: { id: 'codex', label: 'Codex', skillsDir: '~/.codex/skills' }
+  codex: { label: 'Codex', skillsDir: ['.codex', 'skills'] }
 } as const
 
 export type AgentId = keyof typeof AGENTS
@@ -11,7 +11,7 @@ export type Skill = {
   description: string
 }
 
-export type SkillBody = Skill & {
+export type SkillBody = {
   markdown: string
   raw: string
 }
@@ -23,6 +23,11 @@ export type SkillsApi = {
   open: (agent: AgentId, id: string) => Promise<void>
   reveal: (agent: AgentId, id: string) => Promise<void>
   onChanged: (callback: () => void) => () => void
+}
+
+export type RendererApi = {
+  platform: 'darwin' | 'win32' | 'other'
+  skills: SkillsApi
 }
 
 export function parseAgent(value: unknown): AgentId {

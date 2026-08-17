@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
-import type { SkillsApi } from '../shared/skill'
+import type { RendererApi } from '../shared/skill'
 
-const api: { skills: SkillsApi } = {
+const api: RendererApi = {
+  platform:
+    process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'other',
   skills: {
     list: (agent) => ipcRenderer.invoke('skills:list', agent),
     get: (agent, id) => ipcRenderer.invoke('skills:get', agent, id),
@@ -18,16 +19,4 @@ const api: { skills: SkillsApi } = {
   }
 }
 
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
-}
+contextBridge.exposeInMainWorld('api', api)
