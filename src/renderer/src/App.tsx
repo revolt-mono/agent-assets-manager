@@ -1,23 +1,41 @@
-import { useState } from 'react'
-import { Button } from '@renderer/components/ui/button'
+import { BookOpen01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SkillsPage } from '@renderer/skills-page'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider
+} from '@renderer/components/ui/sidebar'
 
 function App(): React.JSX.Element {
-  const [count, setCount] = useState(0)
-
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Electron + Vite + shadcn</h1>
-      <p className="text-sm text-muted-foreground">
-        Electron {window.electron.process.versions.electron} · Chromium{' '}
-        {window.electron.process.versions.chrome} · Node {window.electron.process.versions.node}
-      </p>
-      <div className="flex gap-2">
-        <Button onClick={() => setCount((c) => c + 1)}>Count is {count}</Button>
-        <Button variant="outline" onClick={() => window.electron.ipcRenderer.send('ping')}>
-          Send IPC
-        </Button>
-      </div>
-    </div>
+    <SidebarProvider className="h-svh overflow-hidden">
+      <Sidebar variant="inset" collapsible="icon">
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive>
+                    <HugeiconsIcon icon={BookOpen01Icon} strokeWidth={2} />
+                    <span>Skills</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset className="min-h-0 overflow-hidden">
+        <SkillsPage />
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
