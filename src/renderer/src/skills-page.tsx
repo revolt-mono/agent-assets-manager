@@ -13,7 +13,7 @@ import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from '@renderer/components/ui/toast'
 import { SkillDetail } from '@renderer/skill-detail'
-import { AGENTS, type AgentId, type Skill } from '@shared/skill'
+import { AGENT_IDS, AGENTS, parseAgent, type AgentId, type Skill } from '@shared/skill'
 
 export function SkillsPage(): React.JSX.Element {
   const [agent, setAgent] = useState<AgentId>('codex')
@@ -50,14 +50,14 @@ export function SkillsPage(): React.JSX.Element {
         value={agent}
         onValueChange={(value) => {
           if (value == null) return
-          setAgent(value as AgentId)
+          setAgent(parseAgent(value))
           setSelectedId(null)
         }}
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           <TabsList>
-            {(Object.keys(AGENTS) as AgentId[]).map((id) => (
+            {AGENT_IDS.map((id) => (
               <TabsTrigger key={id} value={id}>
                 {AGENTS[id].label}
               </TabsTrigger>

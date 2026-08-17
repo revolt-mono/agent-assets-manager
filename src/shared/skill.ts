@@ -4,6 +4,10 @@ export const AGENTS = {
 
 export type AgentId = keyof typeof AGENTS
 
+export const AGENT_IDS =
+  // SAFETY: AGENTS is a closed const object, so its keys are exactly the AgentId union.
+  Object.keys(AGENTS) as AgentId[]
+
 export type Skill = {
   agent: AgentId
   id: string
@@ -30,7 +34,8 @@ export type RendererApi = {
   skills: SkillsApi
 }
 
-export function parseAgent(value: unknown): AgentId {
-  if (typeof value === 'string' && value in AGENTS) return value as AgentId
-  throw new Error(`Unknown agent: ${String(value)}`)
+export function parseAgent(value: string): AgentId {
+  const agent = AGENT_IDS.find((id) => id === value)
+  if (agent) return agent
+  throw new Error(`Unknown agent: ${value}`)
 }

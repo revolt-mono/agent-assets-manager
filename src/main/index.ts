@@ -1,11 +1,11 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerSkills } from './skills'
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const options: BrowserWindowConstructorOptions = {
     width: 1070,
     height: 760,
     minWidth: 1070,
@@ -14,12 +14,13 @@ function createWindow(): void {
     autoHideMenuBar: true,
     title: 'Skills',
     backgroundColor: '#f4f4f5',
-    ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
-  })
+  }
+  if (process.platform === 'linux') options.icon = icon
+  const mainWindow = new BrowserWindow(options)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

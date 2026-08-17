@@ -3,7 +3,14 @@ import { readdir, readFile, rm } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { BrowserWindow, ipcMain, shell } from 'electron'
-import { AGENTS, parseAgent, type AgentId, type Skill, type SkillBody } from '../shared/skill'
+import {
+  AGENT_IDS,
+  AGENTS,
+  parseAgent,
+  type AgentId,
+  type Skill,
+  type SkillBody
+} from '../shared/skill'
 
 const SKILL_FILE = 'SKILL.md'
 const ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
@@ -61,7 +68,7 @@ export function registerSkills(): () => void {
     shell.showItemInFolder((await requireSkill(parseAgent(agent), id)).skillFile)
   })
 
-  for (const agent of Object.keys(AGENTS) as AgentId[]) watchAgent(agent)
+  for (const agent of AGENT_IDS) watchAgent(agent)
 
   return () => {
     clearTimeout(timer)
@@ -88,10 +95,8 @@ async function listSkills(agent: AgentId): Promise<Skill[]> {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function requireSkill(agent: AgentId, id: unknown): Promise<Located> {
-  if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
-    throw new Error(`Invalid skill id: ${String(id)}`)
-  }
+async function requireSkill(agent: AgentId, id: string): Promise<Located> {
+  if (!ID_PATTERN.test(id)) throw new Error(`Invalid skill id: ${id}`)
   const located = await readSkill(agent, id)
   if (!located) throw new Error(`Skill not found: ${id}`)
   return located
@@ -116,7 +121,13 @@ async function readSkill(agent: AgentId, id: string): Promise<Located | null> {
   }
 }
 
-function parseFrontmatter(raw: string): { name?: string; description?: string; body: string } {
+type Frontmatter = {
+  name?: string
+  description?: string
+  body: string
+}
+
+function parseFrontmatter(raw: string): Frontmatter {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!match) return { body: raw }
   const frontmatter = match[1]
