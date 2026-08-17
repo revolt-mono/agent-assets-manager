@@ -6,10 +6,10 @@ import { registerSkills } from './skills'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 960,
-    height: 720,
-    minWidth: 720,
-    minHeight: 520,
+    width: 1070,
+    height: 760,
+    minWidth: 1070,
+    minHeight: 760,
     show: false,
     autoHideMenuBar: true,
     title: 'Skills',
