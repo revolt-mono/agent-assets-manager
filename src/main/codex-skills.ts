@@ -1,10 +1,9 @@
 import { watch, type FSWatcher } from 'fs'
 import { homedir } from 'os'
-import { join, normalize, relative, resolve, sep } from 'path'
-import { readdir, readFile, rm, writeFile } from 'fs/promises'
+import { join, relative, resolve, sep } from 'path'
+import { readdir, readFile, rm } from 'fs/promises'
 import { shell } from 'electron'
 import type { Skill, SkillBody } from '../shared/skill'
-import { applySkillEnabled, disabledSkillPaths } from './skills-config'
 
 const SKILL_FILE = 'SKILL.md'
 const ID_PATTERN = /^[A-Za-z0-9._-]+$/
@@ -22,33 +21,20 @@ export async function listSkills(): Promise<Skill[]> {
     if (isNotFound(error)) return []
     throw error
   })
-  const disabled = await readDisabledPaths()
-  const skills: Skill[] = []
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
-    if (!ID_PATTERN.test(entry.name)) continue
-    const skill = await readLocated(entry.name, disabled)
-    if (skill) skills.push(toSkill(skill))
-  }
-  skills.sort((a, b) => a.name.localeCompare(b.name))
-  return skills
+  const names = entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name)
+    .filter((name) => ID_PATTERN.test(name))
+  const located = await Promise.all(names.map(readLocated))
+  return located
+    .filter((skill) => skill !== null)
+    .map(toSkill)
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function getSkill(id: string): Promise<SkillBody> {
   const located = await requireLocated(id)
   return { ...toSkill(located), raw: located.raw, markdown: located.markdown }
-}
-
-export async function setSkillEnabled(id: string, enabled: boolean): Promise<Skill> {
-  const located = await requireLocated(id)
-  const file = configPath()
-  const text = await readFile(file, 'utf8').catch((error) => {
-    if (isNotFound(error)) return ''
-    throw error
-  })
-  const next = applySkillEnabled(text, located.skillFile, enabled)
-  if (next !== text) await writeFile(file, next, 'utf8')
-  return { ...toSkill(located), enabled }
 }
 
 export async function uninstallSkill(id: string): Promise<void> {
@@ -65,24 +51,22 @@ export async function revealSkill(id: string): Promise<void> {
 }
 
 export function watchCodexSkills(onChange: () => void): () => void {
-  const watchers: FSWatcher[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
   const fire = (): void => {
     clearTimeout(timer)
     timer = setTimeout(onChange, 150)
   }
 
-  for (const target of [skillsRoot(), configPath()]) {
-    try {
-      watchers.push(watch(target, fire))
-    } catch {
-      // directory or config may not exist yet
-    }
+  let watcher: FSWatcher | undefined
+  try {
+    watcher = watch(skillsRoot(), fire)
+  } catch {
+    // directory may not exist yet
   }
 
   return () => {
     clearTimeout(timer)
-    for (const watcher of watchers) watcher.close()
+    watcher?.close()
   }
 }
 
@@ -90,18 +74,14 @@ function skillsRoot(): string {
   return join(homedir(), '.codex', 'skills')
 }
 
-function configPath(): string {
-  return join(homedir(), '.codex', 'config.toml')
-}
-
 async function requireLocated(id: string): Promise<LocatedSkill> {
-  const skill = await readLocated(parseSkillId(id), await readDisabledPaths())
+  const skill = await readLocated(id)
   if (!skill) throw new Error(`Skill not found: ${id}`)
   return skill
 }
 
-async function readLocated(id: string, disabled: Set<string>): Promise<LocatedSkill | null> {
-  const dir = resolveSkillDir(parseSkillId(id))
+async function readLocated(id: string): Promise<LocatedSkill | null> {
+  const dir = resolve(skillsRoot(), parseSkillId(id))
   const skillFile = join(dir, SKILL_FILE)
   const raw = await readFile(skillFile, 'utf8').catch(() => null)
   if (raw === null) return null
@@ -111,7 +91,6 @@ async function readLocated(id: string, disabled: Set<string>): Promise<LocatedSk
     id,
     name: displayName(parsed.name || id),
     description: parsed.description ?? '',
-    enabled: !disabled.has(normalize(skillFile)),
     dir,
     skillFile,
     raw,
@@ -124,8 +103,7 @@ function toSkill(located: LocatedSkill): Skill {
     agent: located.agent,
     id: located.id,
     name: located.name,
-    description: located.description,
-    enabled: located.enabled
+    description: located.description
   }
 }
 
@@ -140,18 +118,6 @@ function parseSkillId(value: unknown): string {
     throw new Error(`Invalid skill path: ${String(value)}`)
   }
   return value
-}
-
-function resolveSkillDir(id: string): string {
-  return resolve(skillsRoot(), id)
-}
-
-async function readDisabledPaths(): Promise<Set<string>> {
-  const text = await readFile(configPath(), 'utf8').catch((error) => {
-    if (isNotFound(error)) return ''
-    throw error
-  })
-  return new Set(disabledSkillPaths(text))
 }
 
 function parseFrontmatter(raw: string): { name?: string; description?: string; body: string } {

@@ -5,7 +5,6 @@ import {
   listSkills,
   openSkill,
   revealSkill,
-  setSkillEnabled,
   uninstallSkill,
   watchCodexSkills
 } from './codex-skills'
@@ -14,7 +13,6 @@ const catalogs = {
   codex: {
     list: listSkills,
     get: getSkill,
-    setEnabled: setSkillEnabled,
     uninstall: uninstallSkill,
     open: openSkill,
     reveal: revealSkill
@@ -24,9 +22,6 @@ const catalogs = {
 export function registerSkills(): () => void {
   ipcMain.handle('skills:list', (_event, agent) => catalogs[parseAgent(agent)].list())
   ipcMain.handle('skills:get', (_event, agent, id) => catalogs[parseAgent(agent)].get(id))
-  ipcMain.handle('skills:setEnabled', (_event, agent, id, enabled) =>
-    catalogs[parseAgent(agent)].setEnabled(id, enabled)
-  )
   ipcMain.handle('skills:uninstall', (_event, agent, id) =>
     catalogs[parseAgent(agent)].uninstall(id)
   )

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  BubbleChatIcon,
   Cancel01Icon,
   Copy01Icon,
   CubeIcon,
@@ -33,21 +32,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
-import { Switch } from '@renderer/components/ui/switch'
 import { toast } from '@renderer/components/ui/toast'
 import type { Skill, SkillBody } from '@shared/skill'
 
 type SkillDetailProps = {
   skill: Skill | null
   onClose: () => void
-  onEnabledChange: (id: string, enabled: boolean) => Promise<void>
   onUninstalled: (id: string) => void
 }
 
 export function SkillDetail({
   skill,
   onClose,
-  onEnabledChange,
   onUninstalled
 }: SkillDetailProps): React.JSX.Element {
   const [body, setBody] = useState<SkillBody | null>(null)
@@ -66,6 +62,7 @@ export function SkillDetail({
     if (!agent || !id) return
 
     let cancelled = false
+    setBody(null)
     window.api.skills
       .get(agent, id)
       .then((next) => {
@@ -89,25 +86,19 @@ export function SkillDetail({
         ? 'Show in Explorer'
         : 'Show in folder'
 
-  async function toggleEnabled(enabled: boolean): Promise<void> {
-    if (!current) return
-    try {
-      await onEnabledChange(current.id, enabled)
-    } catch {
-      toast.add({ title: 'Could not update skill', type: 'error' })
-    }
-  }
-
   async function copyMarkdown(): Promise<void> {
     if (!body) return
     await navigator.clipboard.writeText(body.raw)
     toast.add({ title: 'Copied markdown', type: 'success' })
   }
 
-  async function tryNow(): Promise<void> {
+  async function openInEditor(): Promise<void> {
     if (!current) return
-    await navigator.clipboard.writeText(`$${current.id}`)
-    toast.add({ title: `Copied $${current.id}`, type: 'success' })
+    try {
+      await window.api.skills.open(current.agent, current.id)
+    } catch {
+      toast.add({ title: 'Could not open skill', type: 'error' })
+    }
   }
 
   async function uninstall(): Promise<void> {
@@ -142,12 +133,6 @@ export function SkillDetail({
                   <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
                 </div>
                 <div className="flex items-center gap-1">
-                  <Switch
-                    checked={current.enabled}
-                    onCheckedChange={toggleEnabled}
-                    className="data-checked:bg-[#007aff]"
-                    aria-label={current.enabled ? 'Disable skill' : 'Enable skill'}
-                  />
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -157,12 +142,6 @@ export function SkillDetail({
                       <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-40">
-                      <DropdownMenuItem
-                        onClick={() => window.api.skills.open(current.agent, current.id)}
-                      >
-                        <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
-                        Open
-                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => window.api.skills.reveal(current.agent, current.id)}
                       >
@@ -217,9 +196,9 @@ export function SkillDetail({
                 >
                   Uninstall
                 </Button>
-                <Button type="button" className="shrink-0 rounded-full" onClick={tryNow}>
-                  <HugeiconsIcon icon={BubbleChatIcon} strokeWidth={2} />
-                  Try now
+                <Button type="button" className="shrink-0 rounded-full" onClick={openInEditor}>
+                  <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
+                  Open in Editor
                 </Button>
               </div>
             </div>

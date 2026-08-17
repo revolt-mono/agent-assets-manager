@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { CubeIcon, Tick02Icon } from '@hugeicons/core-free-icons'
+import { CubeIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { SkillDetail } from '@renderer/components/skill-detail'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
 import {
   Item,
-  ItemActions,
   ItemContent,
   ItemDescription,
   ItemMedia,
@@ -46,11 +45,6 @@ export function SkillsPage(): React.JSX.Element {
 
   const selected = skills.find((skill) => skill.id === selectedId) ?? null
 
-  async function setEnabled(id: string, enabled: boolean): Promise<void> {
-    const next = await window.api.skills.setEnabled(agent, id, enabled)
-    setSkills((current) => current.map((skill) => (skill.id === id ? next : skill)))
-  }
-
   return (
     <>
       <Tabs
@@ -75,7 +69,7 @@ export function SkillsPage(): React.JSX.Element {
 
         <TabsContent
           value={agent}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-4"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-2 pb-4"
         >
           <div className="scroll-fade min-h-0 flex-1 overflow-y-auto">
             {loading ? (
@@ -113,19 +107,8 @@ export function SkillsPage(): React.JSX.Element {
                     </ItemMedia>
                     <ItemContent className="gap-0.5">
                       <ItemTitle className="text-sm font-semibold">{skill.name}</ItemTitle>
-                      <ItemDescription className="line-clamp-1">
-                        {skill.description}
-                      </ItemDescription>
+                      <ItemDescription>{skill.description}</ItemDescription>
                     </ItemContent>
-                    <ItemActions>
-                      {skill.enabled ? (
-                        <HugeiconsIcon
-                          icon={Tick02Icon}
-                          strokeWidth={2}
-                          className="size-4 text-muted-foreground"
-                        />
-                      ) : null}
-                    </ItemActions>
                   </Item>
                 ))}
               </div>
@@ -137,7 +120,6 @@ export function SkillsPage(): React.JSX.Element {
       <SkillDetail
         skill={selected}
         onClose={() => setSelectedId(null)}
-        onEnabledChange={setEnabled}
         onUninstalled={(id) => {
           setSkills((current) => current.filter((skill) => skill.id !== id))
           setSelectedId(null)

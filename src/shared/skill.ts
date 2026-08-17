@@ -9,7 +9,6 @@ export type Skill = {
   id: string
   name: string
   description: string
-  enabled: boolean
 }
 
 export type SkillBody = Skill & {
@@ -20,7 +19,6 @@ export type SkillBody = Skill & {
 export type SkillsApi = {
   list: (agent: AgentId) => Promise<Skill[]>
   get: (agent: AgentId, id: string) => Promise<SkillBody>
-  setEnabled: (agent: AgentId, id: string, enabled: boolean) => Promise<Skill>
   uninstall: (agent: AgentId, id: string) => Promise<void>
   open: (agent: AgentId, id: string) => Promise<void>
   reveal: (agent: AgentId, id: string) => Promise<void>
