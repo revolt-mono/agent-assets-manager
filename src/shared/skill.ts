@@ -1,4 +1,5 @@
 import type { ConfigApi } from './config'
+import type { UsageApi } from './usage'
 
 export const AGENT_IDS = ['claude', 'codex'] as const
 
@@ -35,6 +36,7 @@ export type RendererApi = {
   platform: 'darwin' | 'win32' | 'other'
   skills: SkillsApi
   config: ConfigApi
+  usage: UsageApi
 }
 
 export function parseAgent(value: string): AgentId {

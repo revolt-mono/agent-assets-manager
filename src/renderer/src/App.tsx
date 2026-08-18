@@ -1,8 +1,9 @@
 import { Activity, useState } from 'react'
-import { BookOpen01Icon, Settings02Icon } from '@hugeicons/core-free-icons'
+import { Analytics01Icon, BookOpen01Icon, Settings02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ConfigPage } from '@renderer/features/config/config-page'
 import { SkillsPage } from '@renderer/features/skills/skills-page'
+import { UsagePage } from '@renderer/features/usage/usage-page'
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +18,7 @@ import {
 
 const PAGES = [
   { id: 'skills', label: 'Skills', icon: BookOpen01Icon, Page: SkillsPage },
+  { id: 'usage', label: 'Usage', icon: Analytics01Icon, Page: UsagePage },
   { id: 'config', label: 'Config', icon: Settings02Icon, Page: ConfigPage }
 ] as const
 

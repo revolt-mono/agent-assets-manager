@@ -26,6 +26,9 @@ const api: RendererApi = {
         ipcRenderer.removeListener('config:changed', callback)
       }
     }
+  },
+  usage: {
+    get: () => ipcRenderer.invoke('usage:get')
   }
 }
 
