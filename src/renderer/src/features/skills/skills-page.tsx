@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CubeIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
@@ -17,10 +17,44 @@ import { loadSkillBody, useSkills } from '@renderer/features/skills/store'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
 import type { Skill, SkillBody } from '@shared/skill'
 
+const SKELETON_DELAY_MS = 150
+
+type SkillsView =
+  | { kind: 'blank' }
+  | { kind: 'skeleton' }
+  | { kind: 'loaded'; agent: AgentId; skills: Skill[] }
+
+// Stale-while-revalidate across tabs: a cold tab keeps the last loaded list
+// (tagged with its agent, so labels stay truthful) on screen until its own
+// list arrives; the skeleton takes over once the load has been pending past
+// SKELETON_DELAY_MS. Blank only ever shows before the very first load.
+function useSkillsView(agent: AgentId): SkillsView {
+  const skills = useSkills(agent)
+  const last = useRef<{ agent: AgentId; skills: Skill[] } | null>(null)
+  if (skills) last.current = { agent, skills }
+
+  const pending = skills === null
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (!pending) {
+      setSlow(false)
+      return
+    }
+    const timer = setTimeout(() => setSlow(true), SKELETON_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [pending])
+
+  return useMemo(() => {
+    if (skills) return { kind: 'loaded', agent, skills }
+    if (slow) return { kind: 'skeleton' }
+    return last.current ? { kind: 'loaded', ...last.current } : { kind: 'blank' }
+  }, [skills, agent, slow])
+}
+
 export function SkillsPage(): React.JSX.Element {
   const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
   const [opened, setOpened] = useState<{ id: string; body: Promise<SkillBody | null> } | null>(null)
-  const view = useSkills(agent)
+  const view = useSkillsView(agent)
 
   // Memoized so the pair keeps its identity across re-renders; the dialog
   // closes by itself when the skill disappears from the list.
@@ -77,10 +111,10 @@ export function SkillsPage(): React.JSX.Element {
           ) : view.skills.length === 0 ? (
             <Empty>
               <EmptyHeader>
-                <EmptyTitle>No {AGENTS[agent].label} skills</EmptyTitle>
+                <EmptyTitle>No {AGENTS[view.agent].label} skills</EmptyTitle>
                 <EmptyDescription>
                   Put a folder with <code>SKILL.md</code> in{' '}
-                  <code>~/{AGENTS[agent].skillsDir.join('/')}</code>.
+                  <code>~/{AGENTS[view.agent].skillsDir.join('/')}</code>.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
