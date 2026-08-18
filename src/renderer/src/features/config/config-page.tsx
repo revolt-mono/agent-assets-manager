@@ -12,7 +12,6 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue
@@ -20,12 +19,7 @@ import {
 import { Switch } from '@renderer/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from '@renderer/components/ui/toast'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from '@renderer/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { AgentLogo } from '@renderer/components/agent-logos'
 import {
   AGENT_FIELDS,
@@ -72,8 +66,8 @@ export function ConfigPage(): React.JSX.Element {
   }
 
   return (
-    <Tabs value="codex" className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden">
-      <header className="flex h-12 shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]">
+    <Tabs value="codex" className="min-h-0 flex-1 gap-0 overflow-hidden">
+      <header className="flex h-12 shrink-0 items-center px-4 [-webkit-app-region:drag]">
         <TabsList className="[-webkit-app-region:no-drag]">
           <TabsTrigger value="codex">
             <AgentLogo agent="codex" />
@@ -84,7 +78,7 @@ export function ConfigPage(): React.JSX.Element {
 
       <TabsContent
         value="codex"
-        className="scroll-fade flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-6 pt-2 pb-4"
+        className="scroll-fade flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pt-2 pb-4"
       >
         <FieldSet className="gap-0">
           <FieldLegend>Agent defaults</FieldLegend>
@@ -160,17 +154,15 @@ function AgentFieldRow({
         <SelectTrigger className="w-36">
           <SelectValue placeholder="Not set" />
         </SelectTrigger>
-        <SelectContent className="w-auto" align="end" alignItemWithTrigger={false}>
-          <SelectGroup>
-            {field.options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                <div className="flex flex-col pe-6">
-                  <span>{option.label}</span>
-                  <span className="text-muted-foreground">{option.description}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectGroup>
+        <SelectContent className="w-auto p-1" align="end" alignItemWithTrigger={false}>
+          {field.options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              <div className="flex flex-col pe-6">
+                {option.label}
+                <span className="text-muted-foreground">{option.description}</span>
+              </div>
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </ConfigRow>
@@ -209,17 +201,15 @@ function RecommendationHint({
   note: (typeof FEATURE_FIELDS)[number]['note']
 }): React.JSX.Element {
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger render={<span className="text-muted-foreground" />}>
-          <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
-        </TooltipTrigger>
-        <TooltipContent>
-          <span>
-            Recommended <span className="font-semibold">{note.recommended}</span>: {note.reason}
-          </span>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger render={<span className="text-muted-foreground" />}>
+        <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>
+        <span>
+          Recommended <span className="font-semibold">{note.recommended}</span>: {note.reason}
+        </span>
+      </TooltipContent>
+    </Tooltip>
   )
 }

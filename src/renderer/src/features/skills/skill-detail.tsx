@@ -69,7 +69,10 @@ export function SkillDetail({
         if (!next) onClose()
       }}
     >
-      <DialogContent showCloseButton={false} className="gap-0 overflow-hidden p-6 sm:max-w-lg!">
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[min(85vh,40rem)] flex-col gap-0 overflow-hidden p-6 sm:max-w-lg"
+      >
         {current ? (
           <SkillDetailContent
             key={`${current.agent}/${current.id}`}
@@ -110,7 +113,7 @@ function SkillDetailContent({
     return () => {
       cancelled = true
     }
-  }, [skill])
+  }, [skill.agent, skill.id])
 
   async function copyMarkdown(): Promise<void> {
     if (!body) return
@@ -142,72 +145,62 @@ function SkillDetailContent({
 
   return (
     <>
-      <div className="flex max-h-[min(85vh,40rem)] min-w-0 flex-col">
-        <div className="flex shrink-0 items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
-              <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <DialogTitle className="truncate">{skill.name}</DialogTitle>
-              <p className="truncate text-xs text-muted-foreground">
-                Last updated {lastUpdated(skill.updatedAt)}.
-              </p>
-            </div>
+      <div className="flex shrink-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+            <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
           </div>
-          <div className="flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button type="button" variant="ghost" size="icon-sm" aria-label="More" />}
-              >
-                <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-40">
-                <DropdownMenuItem onClick={() => window.api.skills.reveal(skill.agent, skill.id)}>
-                  <HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
-                  {REVEAL_LABEL}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={copyMarkdown} disabled={!body}>
-                  <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} />
-                  Copy Markdown
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Close"
-              onClick={onClose}
+          <div className="min-w-0">
+            <DialogTitle className="truncate">{skill.name}</DialogTitle>
+            <p className="truncate text-xs text-muted-foreground">
+              Last updated {lastUpdated(skill.updatedAt)}.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button type="button" variant="ghost" size="icon-sm" aria-label="More" />}
             >
-              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            </Button>
-          </div>
-        </div>
-
-        <DialogDescription className="shrink-0 pt-3">{skill.description}</DialogDescription>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col py-4">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-xl bg-muted/60 py-4">
-            <div className="scroll-fade h-full overflow-y-auto px-4">
-              {body ? (
-                <SkillMarkdown source={body.markdown} />
-              ) : (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-between gap-3 pt-2">
-          <Button type="button" variant="destructive" onClick={() => setConfirmUninstall(true)}>
-            Uninstall
-          </Button>
-          <Button type="button" className="shrink-0" onClick={openInEditor}>
-            <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
-            Open in Editor
+              <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+              <DropdownMenuItem onClick={() => window.api.skills.reveal(skill.agent, skill.id)}>
+                <HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
+                {REVEAL_LABEL}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={copyMarkdown} disabled={!body}>
+                <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} />
+                Copy Markdown
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
+            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
           </Button>
         </div>
+      </div>
+
+      <DialogDescription className="shrink-0 pt-3">{skill.description}</DialogDescription>
+
+      <div className="my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-muted/60 py-4">
+        <div className="scroll-fade min-h-0 flex-1 overflow-y-auto px-4">
+          {body ? (
+            <SkillMarkdown source={body.markdown} />
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 pt-2">
+        <Button type="button" variant="destructive" onClick={() => setConfirmUninstall(true)}>
+          Uninstall
+        </Button>
+        <Button type="button" onClick={openInEditor}>
+          <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
+          Open in Editor
+        </Button>
       </div>
 
       <AlertDialog open={confirmUninstall} onOpenChange={setConfirmUninstall}>

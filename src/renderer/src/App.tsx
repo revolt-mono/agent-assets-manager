@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Activity, useState } from 'react'
 import { BookOpen01Icon, Settings02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ConfigPage } from '@renderer/features/config/config-page'
@@ -8,7 +8,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
@@ -17,8 +16,8 @@ import {
 } from '@renderer/components/ui/sidebar'
 
 const PAGES = [
-  { id: 'skills', label: 'Skills', icon: BookOpen01Icon, content: <SkillsPage /> },
-  { id: 'config', label: 'Config', icon: Settings02Icon, content: <ConfigPage /> }
+  { id: 'skills', label: 'Skills', icon: BookOpen01Icon, Page: SkillsPage },
+  { id: 'config', label: 'Config', icon: Settings02Icon, Page: ConfigPage }
 ] as const
 
 type PageId = (typeof PAGES)[number]['id']
@@ -29,9 +28,9 @@ function App(): React.JSX.Element {
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <Sidebar variant="inset" collapsible="icon">
-        <SidebarHeader className="h-9 [-webkit-app-region:drag]" />
+        <div className="h-9 shrink-0 [-webkit-app-region:drag]" />
         <SidebarContent>
-          <SidebarGroup className="px-0">
+          <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
                 {PAGES.map((item) => (
@@ -49,12 +48,9 @@ function App(): React.JSX.Element {
       </Sidebar>
       <SidebarInset className="min-h-0 overflow-hidden">
         {PAGES.map((item) => (
-          <div
-            key={item.id}
-            className={page === item.id ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
-          >
-            {item.content}
-          </div>
+          <Activity key={item.id} mode={page === item.id ? 'visible' : 'hidden'}>
+            <item.Page />
+          </Activity>
         ))}
       </SidebarInset>
     </SidebarProvider>

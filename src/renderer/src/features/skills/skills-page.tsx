@@ -54,9 +54,9 @@ export function SkillsPage(): React.JSX.Element {
           setAgent(parseAgent(value))
           setSelectedId(null)
         }}
-        className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
+        className="min-h-0 flex-1 gap-0 overflow-hidden"
       >
-        <header className="flex h-12 shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]">
+        <header className="flex h-12 shrink-0 items-center px-4 [-webkit-app-region:drag]">
           <TabsList className="[-webkit-app-region:no-drag]">
             {AGENT_IDS.map((id) => (
               <TabsTrigger key={id} value={id}>
@@ -69,7 +69,7 @@ export function SkillsPage(): React.JSX.Element {
 
         <TabsContent
           value={agent}
-          className="scroll-fade min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-4"
+          className="scroll-fade flex min-h-0 flex-col overflow-y-auto px-4 pt-2 pb-4"
         >
           {loading ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -86,7 +86,7 @@ export function SkillsPage(): React.JSX.Element {
               ))}
             </div>
           ) : skills.length === 0 ? (
-            <Empty className="min-h-80">
+            <Empty>
               <EmptyHeader>
                 <EmptyTitle>No {AGENTS[agent].label} skills</EmptyTitle>
                 <EmptyDescription>

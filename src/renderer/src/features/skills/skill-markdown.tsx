@@ -1,4 +1,4 @@
-import { Children, isValidElement, memo, useState } from 'react'
+import { Children, isValidElement, memo, useEffect, useRef, useState } from 'react'
 import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import Markdown, { type Components } from 'react-markdown'
@@ -24,13 +24,13 @@ const COMPONENTS: Components = {
     </a>
   ),
   code: ({ children }) => (
-    <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.8125rem]">{children}</code>
+    <code className="rounded-md bg-muted px-1.5 py-0.5 text-[0.8125rem]">{children}</code>
   ),
   pre: ({ children }) => <CodeBlockFromPre>{children}</CodeBlockFromPre>,
   hr: () => <hr className="border-border" />,
   table: ({ children }) => (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left">{children}</table>
+      <table className="w-full border-collapse">{children}</table>
     </div>
   ),
   th: ({ children }) => (
@@ -50,7 +50,7 @@ export const SkillMarkdown = memo(function SkillMarkdown({
   source: string
 }): React.JSX.Element {
   return (
-    <div className="space-y-3 text-sm/relaxed text-foreground">
+    <div className="space-y-3 text-sm/relaxed">
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
         {source}
       </Markdown>
@@ -70,11 +70,15 @@ function CodeBlockFromPre({ children }: { children?: React.ReactNode }): React.J
 
 function CodeBlock({ lang, code }: { lang: string; code: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
+  const resetTimer = useRef(0)
+
+  useEffect(() => () => window.clearTimeout(resetTimer.current), [])
 
   async function copy(): Promise<void> {
     await navigator.clipboard.writeText(code)
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 1200)
+    window.clearTimeout(resetTimer.current)
+    resetTimer.current = window.setTimeout(() => setCopied(false), 1200)
   }
 
   return (
