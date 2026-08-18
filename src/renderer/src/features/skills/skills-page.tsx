@@ -69,7 +69,7 @@ export function SkillsPage(): React.JSX.Element {
 
         <TabsContent
           value={agent}
-          className="scroll-fade flex min-h-0 flex-col overflow-y-auto px-4 pt-2 pb-4"
+          className="scroll-fade my-2 flex min-h-0 flex-col overflow-y-auto px-4 pb-2"
         >
           {loading ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

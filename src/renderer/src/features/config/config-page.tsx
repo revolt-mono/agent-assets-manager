@@ -122,7 +122,7 @@ export function ConfigPage(): React.JSX.Element {
 
       <TabsContent
         value="codex"
-        className="scroll-fade flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pt-2 pb-4"
+        className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pb-2"
       >
         <FieldSet className="gap-0">
           <FieldLegend>Agent defaults</FieldLegend>

@@ -183,8 +183,8 @@ function SkillDetailContent({
 
       <DialogDescription className="shrink-0 pt-3">{skill.description}</DialogDescription>
 
-      <div className="my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-muted/60 py-4">
-        <div className="scroll-fade min-h-0 flex-1 overflow-y-auto px-4">
+      <div className="my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-muted/60">
+        <div className="scroll-fade my-2 min-h-0 flex-1 overflow-y-auto px-4 py-2">
           {body ? (
             <SkillMarkdown source={body.markdown} />
           ) : (
