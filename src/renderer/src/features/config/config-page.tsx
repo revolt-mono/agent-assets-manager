@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
-import { InformationCircleIcon } from '@hugeicons/core-free-icons'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { InformationCircleIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { motion } from 'motion/react'
+import { Button } from '@renderer/components/ui/button'
 import {
   Field,
   FieldContent,
@@ -21,6 +23,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/u
 import { toast } from '@renderer/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { AgentLogo } from '@renderer/components/agent-logos'
+import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
+import { cn } from '@renderer/lib/utils'
 import {
   AGENT_FIELDS,
   FEATURE_FIELDS,
@@ -30,11 +34,16 @@ import {
 } from '@shared/config'
 
 export function ConfigPage(): React.JSX.Element {
-  const [values, setValues] = useState<ConfigValues | null>(null)
+  const [saved, setSaved] = useState<ConfigValues | null>(null)
+  const [draft, setDraft] = useState<ConfigValues | null>(null)
+  const [justSaved, setJustSaved] = useState(false)
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      setValues(await window.api.config.get())
+      const values = await window.api.config.get()
+      setSaved(values)
+      setDraft(values)
     } catch {
       toast.add({ title: 'Could not load config', type: 'error' })
     }
@@ -42,38 +51,73 @@ export function ConfigPage(): React.JSX.Element {
 
   useEffect(() => {
     void load()
-    return window.api.config.onChanged(() => {
+    const unsubscribe = window.api.config.onChanged(() => {
       void load()
     })
+    return () => {
+      unsubscribe()
+      clearTimeout(resetTimer.current)
+    }
   }, [load])
 
   const updateAgent = (key: AgentFieldKey, value: string): void => {
-    setValues((current) => current && { ...current, agent: { ...current.agent, [key]: value } })
-    window.api.config.set(key, value).catch(() => {
-      toast.add({ title: 'Could not update config', type: 'error' })
-      void load()
-    })
+    setDraft((current) => current && { ...current, agent: { ...current.agent, [key]: value } })
   }
 
   const updateFeature = (key: FeatureKey, enabled: boolean): void => {
-    setValues(
+    setDraft(
       (current) => current && { ...current, features: { ...current.features, [key]: enabled } }
     )
-    window.api.config.setFeature(key, enabled).catch(() => {
-      toast.add({ title: 'Could not update config', type: 'error' })
-      void load()
-    })
   }
+
+  const dirty = saved !== null && draft !== null && JSON.stringify(saved) !== JSON.stringify(draft)
+
+  const save = async (): Promise<void> => {
+    if (!draft) return
+    try {
+      await window.api.config.save(draft)
+      setSaved(draft)
+      setJustSaved(true)
+      clearTimeout(resetTimer.current)
+      resetTimer.current = setTimeout(() => setJustSaved(false), 2000)
+    } catch {
+      toast.add({ title: 'Could not save config', type: 'error' })
+      void load()
+    }
+  }
+
+  const showSaved = justSaved && !dirty
 
   return (
     <Tabs value="codex" className="min-h-0 flex-1 gap-0 overflow-hidden">
-      <header className="flex h-12 shrink-0 items-center px-4 [-webkit-app-region:drag]">
+      <header className="flex h-12 shrink-0 items-center justify-between px-4 [-webkit-app-region:drag]">
         <TabsList className="[-webkit-app-region:no-drag]">
           <TabsTrigger value="codex">
             <AgentLogo agent="codex" />
             Codex
           </TabsTrigger>
         </TabsList>
+        <div className="grid place-items-center [-webkit-app-region:no-drag] *:col-start-1 *:row-start-1">
+          {/* invisible twin pins the width so Save and the checkmark swap in place */}
+          <Button size="sm" aria-hidden tabIndex={-1} className="invisible">
+            Save
+          </Button>
+          <Button
+            size="sm"
+            disabled={!dirty}
+            onClick={() => void save()}
+            className={cn(
+              'w-full text-white',
+              showSaved ? 'bg-[#008009] disabled:opacity-100' : 'bg-[#007aff] hover:bg-[#007aff]/80'
+            )}
+          >
+            <IconSwap>
+              <IconSwapItem key={showSaved ? 'saved' : 'idle'} as={motion.span}>
+                {showSaved ? <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} /> : 'Save'}
+              </IconSwapItem>
+            </IconSwap>
+          </Button>
+        </div>
       </header>
 
       <TabsContent
@@ -86,8 +130,8 @@ export function ConfigPage(): React.JSX.Element {
             <AgentFieldRow
               key={field.key}
               field={field}
-              value={values?.agent[field.key] ?? null}
-              disabled={!values}
+              value={draft?.agent[field.key] ?? null}
+              disabled={!draft}
               onChange={(value) => updateAgent(field.key, value)}
             />
           ))}
@@ -99,8 +143,8 @@ export function ConfigPage(): React.JSX.Element {
             <FeatureRow
               key={field.key}
               field={field}
-              enabled={values?.features[field.key] ?? false}
-              disabled={!values}
+              enabled={draft?.features[field.key] ?? false}
+              disabled={!draft}
               onChange={(enabled) => updateFeature(field.key, enabled)}
             />
           ))}

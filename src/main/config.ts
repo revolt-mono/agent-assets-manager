@@ -59,15 +59,8 @@ export function registerConfig(): () => void {
     ensureWatch()
     return values
   })
-  ipcMain.handle('config:set', async (_event, key, value) => {
-    const entry = parseAgentEntry(key, value)
-    await serialize(() => writeAgentValue(entry))
-    ensureWatch()
-  })
-  ipcMain.handle('config:set-feature', async (_event, key, enabled) => {
-    const parsed = parseFeatureKey(key)
-    const on = enabled === true
-    await serialize(() => writeFeature(parsed, on))
+  ipcMain.handle('config:save', async (_event, values: ConfigValues) => {
+    await serialize(() => writeValues(values))
     ensureWatch()
   })
 
@@ -79,26 +72,14 @@ export function registerConfig(): () => void {
   }
 }
 
-type AgentEntry = { key: AgentFieldKey; value: string }
 type AgentField = (typeof AGENT_FIELDS)[number]
 type FeatureField = (typeof FEATURE_FIELDS)[number]
 
-function parseAgentEntry(key: string, value: string): AgentEntry {
-  const field = AGENT_FIELDS.find((item) => item.key === key)
-  if (!field) throw new Error(`Unknown config key: ${key}`)
-  const option = field.options.find((item) => item.value === value)
-  if (!option) throw new Error(`Unsupported ${field.key} value: ${value}`)
-  return { key: field.key, value: option.value }
-}
-
-function parseFeatureKey(key: string): FeatureKey {
-  const field = FEATURE_FIELDS.find((item) => item.key === key)
-  if (!field) throw new Error(`Unknown feature: ${key}`)
-  return field.key
-}
-
 async function readValues(): Promise<ConfigValues> {
-  const lines = await readLines()
+  return valuesFromLines(await readLines())
+}
+
+function valuesFromLines(lines: string[]): ConfigValues {
   // SAFETY: fromEntries over the complete field lists yields every key.
   return {
     agent: Object.fromEntries(
@@ -123,16 +104,31 @@ function readFeatureValue(lines: string[], field: FeatureField): boolean {
   return lineValue(line).split('#')[0].trim() === 'true'
 }
 
-async function writeAgentValue({ key, value }: AgentEntry): Promise<void> {
+// Validates the untrusted IPC payload while diffing against the file, then
+// writes changed entries in one pass; throws before touching disk.
+async function writeValues(next: ConfigValues): Promise<void> {
   const lines = await readLines()
-  upsertTopLevelLine(lines, key, value)
-  await writeLines(lines)
-}
-
-async function writeFeature(key: FeatureKey, enabled: boolean): Promise<void> {
-  const lines = await readLines()
-  upsertFeatureLine(lines, key, enabled)
-  await writeLines(lines)
+  const current = valuesFromLines(lines)
+  let changed = false
+  for (const field of AGENT_FIELDS) {
+    const value = next.agent[field.key]
+    if (value === null || value === current.agent[field.key]) continue
+    if (!field.options.some((option) => option.value === value)) {
+      throw new Error(`Unsupported ${field.key} value: ${value}`)
+    }
+    upsertTopLevelLine(lines, field.key, value)
+    changed = true
+  }
+  for (const field of FEATURE_FIELDS) {
+    const enabled = next.features[field.key]
+    if (enabled !== true && enabled !== false) {
+      throw new Error(`Unsupported ${field.key} value: ${enabled}`)
+    }
+    if (enabled === current.features[field.key]) continue
+    upsertFeatureLine(lines, field.key, enabled)
+    changed = true
+  }
+  if (changed) await writeLines(lines)
 }
 
 async function readLines(): Promise<string[]> {

@@ -19,8 +19,7 @@ const api: RendererApi = {
   },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
-    set: (key, value) => ipcRenderer.invoke('config:set', key, value),
-    setFeature: (key, enabled) => ipcRenderer.invoke('config:set-feature', key, enabled),
+    save: (values) => ipcRenderer.invoke('config:save', values),
     onChanged: (callback) => {
       ipcRenderer.on('config:changed', callback)
       return () => {

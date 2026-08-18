@@ -133,7 +133,6 @@ export type ConfigValues = {
 
 export type ConfigApi = {
   get: () => Promise<ConfigValues>
-  set: (key: AgentFieldKey, value: string) => Promise<void>
-  setFeature: (key: FeatureKey, enabled: boolean) => Promise<void>
+  save: (values: ConfigValues) => Promise<void>
   onChanged: (callback: () => void) => () => void
 }
