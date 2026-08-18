@@ -187,7 +187,7 @@ export function UsagePage(): React.JSX.Element {
                       formatter={(value, name, item) => (
                         <>
                           <div
-                            className="size-2.5 shrink-0 rounded-[2px]"
+                            className="size-2.5 shrink-0 rounded-xs"
                             style={{ background: item.color }}
                           />
                           {chartConfig[parseAgent(String(name))].label}
