@@ -28,7 +28,7 @@ const api: RendererApi = {
     }
   },
   usage: {
-    get: () => ipcRenderer.invoke('usage:get')
+    get: (fresh) => ipcRenderer.invoke('usage:get', fresh)
   }
 }
 

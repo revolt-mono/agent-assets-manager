@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'fs/promises'
+import { readdir, readFile, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { ipcMain } from 'electron'
@@ -71,6 +71,9 @@ type UsageEvent = {
   cacheRead: number
   cacheWrite5m: number
   cacheWrite1h: number
+  // Claude resumed sessions copy history into new files, so the same request
+  // appears in several logs; report() keeps the first event per key.
+  dedupe: string | null
 }
 
 // Logs are machine-written but still untrusted: a leaf that fails this check
@@ -91,14 +94,10 @@ async function filesUnder(root: string, match: (name: string) => boolean): Promi
 
 // Reads one jsonl file, keeping only lines that mention a needle and parse as
 // JSON. T declares the expected line shape; every leaf is still checked before
-// use because the log is untrusted.
+// use because the log is untrusted. Read failures propagate so a transient
+// error is never mistaken for an empty file.
 async function jsonLines<T>(file: string, needles: string[]): Promise<T[]> {
-  let text: string
-  try {
-    text = await readFile(file, 'utf8')
-  } catch {
-    return []
-  }
+  const text = await readFile(file, 'utf8')
   const parsed: T[] = []
   for (const line of text.split('\n')) {
     if (!needles.some((needle) => line.includes(needle))) continue
@@ -131,42 +130,34 @@ type ClaudeLine = {
   }
 }
 
-async function claudeEvents(): Promise<UsageEvent[]> {
-  const files = await filesUnder(join(homedir(), '.claude', 'projects'), (name) =>
-    name.endsWith('.jsonl')
-  )
-  const seen = new Set<string>()
+async function claudeFileEvents(file: string): Promise<UsageEvent[]> {
   const events: UsageEvent[] = []
-  for (const file of files) {
-    for (const entry of await jsonLines<ClaudeLine>(file, ['"assistant"'])) {
-      if (entry?.type !== 'assistant') continue
-      const message = entry.message
-      const usage = message?.usage
-      const model = message?.model
-      if (entry.requestId == null || message?.id == null || usage == null) continue
-      if (model == null || model === '<synthetic>') continue
-      const timestamp = Date.parse(`${entry.timestamp}`)
-      const input = count(usage.input_tokens)
-      const output = count(usage.output_tokens)
-      const cacheRead = count(usage.cache_read_input_tokens)
-      const cacheCreation = count(usage.cache_creation_input_tokens)
-      if (Number.isNaN(timestamp) || input === null || output === null) continue
-      if (cacheRead === null || cacheCreation === null) continue
-      const key = `${message.id}\n${entry.requestId}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      const split = usage.cache_creation
-      events.push({
-        agent: 'claude',
-        timestamp,
-        model,
-        input,
-        output,
-        cacheRead,
-        cacheWrite5m: split ? (count(split.ephemeral_5m_input_tokens) ?? 0) : 0,
-        cacheWrite1h: split ? (count(split.ephemeral_1h_input_tokens) ?? 0) : cacheCreation
-      })
-    }
+  for (const entry of await jsonLines<ClaudeLine>(file, ['"assistant"'])) {
+    if (entry?.type !== 'assistant') continue
+    const message = entry.message
+    const usage = message?.usage
+    const model = message?.model
+    if (entry.requestId == null || message?.id == null || usage == null) continue
+    if (model == null || model === '<synthetic>') continue
+    const timestamp = Date.parse(`${entry.timestamp}`)
+    const input = count(usage.input_tokens)
+    const output = count(usage.output_tokens)
+    const cacheRead = count(usage.cache_read_input_tokens)
+    const cacheCreation = count(usage.cache_creation_input_tokens)
+    if (Number.isNaN(timestamp) || input === null || output === null) continue
+    if (cacheRead === null || cacheCreation === null) continue
+    const split = usage.cache_creation
+    events.push({
+      agent: 'claude',
+      timestamp,
+      model,
+      input,
+      output,
+      cacheRead,
+      cacheWrite5m: split ? (count(split.ephemeral_5m_input_tokens) ?? 0) : 0,
+      cacheWrite1h: split ? (count(split.ephemeral_1h_input_tokens) ?? 0) : cacheCreation,
+      dedupe: `${message.id}\n${entry.requestId}`
+    })
   }
   return events
 }
@@ -199,59 +190,105 @@ const totalKey = (total: CodexTokenUsage): string =>
     total.output_tokens
   ].join('|')
 
-async function codexEvents(): Promise<UsageEvent[]> {
+async function codexFileEvents(file: string): Promise<UsageEvent[]> {
   const events: UsageEvent[] = []
-  for (const root of ['sessions', 'archived_sessions']) {
-    const files = await filesUnder(
-      join(homedir(), '.codex', root),
-      (name) => name.startsWith('rollout-') && name.endsWith('.jsonl')
-    )
-    for (const file of files) {
-      let model: string | null = null
-      let previousTotal: string | null = null
-      const records = await jsonLines<CodexLine>(file, [
-        'session_meta',
-        'turn_context',
-        'token_count'
-      ])
-      for (const record of records) {
-        if (record?.type === 'session_meta' || record?.type === 'turn_context') {
-          if (record.payload?.model != null) model = record.payload.model
-          continue
-        }
-        if (record?.type !== 'event_msg' || record.payload?.type !== 'token_count') continue
-        const info = record.payload.info
-        const total = info?.total_token_usage
-        const last = info?.last_token_usage
-        if (total == null || last == null) continue
-        if (totalKey(total) === previousTotal) continue
-        if (model === null) continue
-        const timestamp = Date.parse(`${record.timestamp}`)
-        const inputTokens = count(last.input_tokens)
-        const cacheRead = count(last.cached_input_tokens)
-        const output = count(last.output_tokens)
-        if (Number.isNaN(timestamp) || inputTokens === null || cacheRead === null) continue
-        if (output === null || inputTokens < cacheRead) continue
-        previousTotal = totalKey(total)
-        events.push({
-          agent: 'codex',
-          timestamp,
-          model,
-          input: inputTokens - cacheRead,
-          output,
-          cacheRead,
-          cacheWrite5m: count(last.cache_write_input_tokens) ?? 0,
-          cacheWrite1h: 0
-        })
-      }
+  let model: string | null = null
+  let previousTotal: string | null = null
+  const records = await jsonLines<CodexLine>(file, ['session_meta', 'turn_context', 'token_count'])
+  for (const record of records) {
+    if (record?.type === 'session_meta' || record?.type === 'turn_context') {
+      if (record.payload?.model != null) model = record.payload.model
+      continue
     }
+    if (record?.type !== 'event_msg' || record.payload?.type !== 'token_count') continue
+    const info = record.payload.info
+    const total = info?.total_token_usage
+    const last = info?.last_token_usage
+    if (total == null || last == null) continue
+    const key = totalKey(total)
+    if (key === previousTotal) continue
+    if (model === null) continue
+    const timestamp = Date.parse(`${record.timestamp}`)
+    const inputTokens = count(last.input_tokens)
+    const cacheRead = count(last.cached_input_tokens)
+    const output = count(last.output_tokens)
+    if (Number.isNaN(timestamp) || inputTokens === null || cacheRead === null) continue
+    if (output === null || inputTokens < cacheRead) continue
+    previousTotal = key
+    events.push({
+      agent: 'codex',
+      timestamp,
+      model,
+      input: inputTokens - cacheRead,
+      output,
+      cacheRead,
+      cacheWrite5m: count(last.cache_write_input_tokens) ?? 0,
+      cacheWrite1h: 0,
+      dedupe: null
+    })
   }
   return events
 }
 
+const isCodexLog = (name: string): boolean => name.startsWith('rollout-') && name.endsWith('.jsonl')
+
+const SOURCES = [
+  {
+    root: join(homedir(), '.claude', 'projects'),
+    match: (name: string) => name.endsWith('.jsonl'),
+    parse: claudeFileEvents
+  },
+  { root: join(homedir(), '.codex', 'sessions'), match: isCodexLog, parse: codexFileEvents },
+  {
+    root: join(homedir(), '.codex', 'archived_sessions'),
+    match: isCodexLog,
+    parse: codexFileEvents
+  }
+]
+
+// Session logs are immutable once written and only the live session's file
+// grows, so events are cached per file and re-parsed only when mtime or size
+// changes. Each sweep rebuilds the map, dropping files that no longer exist.
+type CacheEntry = { mtimeMs: number; size: number; events: UsageEvent[] }
+let cache = new Map<string, CacheEntry>()
+
+async function allEvents(): Promise<UsageEvent[]> {
+  const next = new Map<string, CacheEntry>()
+  const lists = await Promise.all(
+    SOURCES.map(async (source) => {
+      const events: UsageEvent[] = []
+      for (const file of await filesUnder(source.root, source.match)) {
+        const info = await stat(file).catch(() => null)
+        if (!info) continue
+        const hit = cache.get(file)
+        let entry: CacheEntry
+        if (hit && hit.mtimeMs === info.mtimeMs && hit.size === info.size) {
+          entry = hit
+        } else {
+          try {
+            entry = { mtimeMs: info.mtimeMs, size: info.size, events: await source.parse(file) }
+          } catch {
+            continue // transient read failure: retry next sweep
+          }
+        }
+        next.set(file, entry)
+        for (const event of entry.events) events.push(event)
+      }
+      return events
+    })
+  )
+  cache = next
+  return lists.flat()
+}
+
 function report(events: UsageEvent[]): UsageBucket[] {
   const buckets = new Map<string, UsageBucket>()
+  const seen = new Set<string>()
   for (const event of events) {
+    if (event.dedupe !== null) {
+      if (seen.has(event.dedupe)) continue
+      seen.add(event.dedupe)
+    }
     const model = ALIASES.get(event.model) ?? event.model
     const rates = CATALOG.get(model)
     if (!rates) continue
@@ -282,8 +319,8 @@ function report(events: UsageEvent[]): UsageBucket[] {
 }
 
 export function registerUsage(): void {
-  ipcMain.handle('usage:get', async () => {
-    const [claude, codex] = await Promise.all([claudeEvents(), codexEvents()])
-    return report([...claude, ...codex])
+  ipcMain.handle('usage:get', async (_event, fresh: boolean) => {
+    if (fresh) cache = new Map()
+    return report(await allEvents())
   })
 }

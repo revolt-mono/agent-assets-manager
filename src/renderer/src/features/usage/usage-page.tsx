@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { RefreshIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { motion } from 'motion/react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Button } from '@renderer/components/ui/button'
 import {
   ChartContainer,
   ChartLegend,
@@ -9,6 +13,7 @@ import {
   type ChartConfig
 } from '@renderer/components/ui/chart'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
+import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from '@renderer/components/ui/toast'
@@ -54,23 +59,39 @@ function emptyPoints({ unit, count }: Range): ChartPoint[] {
 export function UsagePage(): React.JSX.Element {
   const [range, setRange] = useState<Range>(RANGES[0])
   const [buckets, setBuckets] = useState<UsageBucket[] | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const busy = refreshing || buckets === null
 
+  // The main process caches parsed logs per file, so reloading on every visit
+  // is cheap and keeps the chart window and totals current.
   useEffect(() => {
     let cancelled = false
     window.api.usage
-      .get()
+      .get(false)
       .then((loaded) => {
         if (!cancelled) setBuckets(loaded)
       })
       .catch(() => {
         if (cancelled) return
         toast.add({ title: 'Could not load usage', type: 'error' })
-        setBuckets([])
+        // keep data from an earlier visit; only settle the initial spinner
+        setBuckets((current) => current ?? [])
       })
     return () => {
       cancelled = true
     }
   }, [])
+
+  const refresh = async (): Promise<void> => {
+    setRefreshing(true)
+    try {
+      setBuckets(await window.api.usage.get(true))
+    } catch {
+      toast.add({ title: 'Could not load usage', type: 'error' })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const view = useMemo(() => {
     const points = emptyPoints(range)
@@ -121,7 +142,7 @@ export function UsagePage(): React.JSX.Element {
       }}
       className="min-h-0 flex-1 gap-0 overflow-hidden"
     >
-      <header className="flex h-12 shrink-0 items-center px-4 [-webkit-app-region:drag]">
+      <header className="flex h-12 shrink-0 items-center justify-between px-4 [-webkit-app-region:drag]">
         <TabsList className="[-webkit-app-region:no-drag]">
           {RANGES.map((candidate) => (
             <TabsTrigger key={candidate.id} value={candidate.id}>
@@ -129,6 +150,24 @@ export function UsagePage(): React.JSX.Element {
             </TabsTrigger>
           ))}
         </TabsList>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Refresh usage"
+          className="[-webkit-app-region:no-drag]"
+          disabled={busy}
+          onClick={() => void refresh()}
+        >
+          <IconSwap>
+            <IconSwapItem key={busy ? 'busy' : 'idle'} as={motion.span}>
+              {busy ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} />
+              )}
+            </IconSwapItem>
+          </IconSwap>
+        </Button>
       </header>
 
       {buckets === null ? (
@@ -188,16 +227,8 @@ export function UsagePage(): React.JSX.Element {
                 />
                 <ChartLegend content={<ChartLegendContent />} />
                 {/* the built-in tween tears when the point count changes across tabs */}
-                <Bar
-                  dataKey="claude"
-                  fill="var(--color-claude)"
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="codex"
-                  fill="var(--color-codex)"
-                  isAnimationActive={false}
-                />
+                <Bar dataKey="claude" fill="var(--color-claude)" isAnimationActive={false} />
+                <Bar dataKey="codex" fill="var(--color-codex)" isAnimationActive={false} />
               </BarChart>
             </ChartContainer>
           </section>

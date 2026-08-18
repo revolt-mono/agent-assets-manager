@@ -17,5 +17,6 @@ export type UsageBucket = {
 }
 
 export type UsageApi = {
-  get: () => Promise<UsageBucket[]>
+  /** fresh discards the parse cache and re-reads every log from disk */
+  get: (fresh: boolean) => Promise<UsageBucket[]>
 }
