@@ -1,8 +1,9 @@
-export const AGENT_IDS = ['codex'] as const
+export const AGENT_IDS = ['claude', 'codex'] as const
 
 export type AgentId = (typeof AGENT_IDS)[number]
 
 export const AGENTS = {
+  claude: { label: 'Claude', skillsDir: ['.claude', 'skills'] },
   codex: { label: 'Codex', skillsDir: ['.codex', 'skills'] }
 } as const satisfies Record<AgentId, { label: string; skillsDir: readonly string[] }>
 

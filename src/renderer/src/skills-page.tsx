@@ -16,7 +16,7 @@ import { SkillDetail } from '@renderer/skill-detail'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId, type Skill } from '@shared/skill'
 
 export function SkillsPage(): React.JSX.Element {
-  const [agent, setAgent] = useState<AgentId>('codex')
+  const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
