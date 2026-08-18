@@ -23,4 +23,4 @@
 ## UI
 
 - Apply tight grids, crisp layouts with the 4px design rule.
-- Do not edit or add post-styling tokens on shadcn components unless explicitly requested.
+- Do not add adhoc styling tokens on shadcn components unless explicitly requested.
