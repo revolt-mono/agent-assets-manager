@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BookOpen01Icon, Settings02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ConfigPage } from '@renderer/config-page'
-import { SkillsPage } from '@renderer/skills-page'
+import { ConfigPage } from '@renderer/features/config/config-page'
+import { SkillsPage } from '@renderer/features/skills/skills-page'
 import {
   Sidebar,
   SidebarContent,

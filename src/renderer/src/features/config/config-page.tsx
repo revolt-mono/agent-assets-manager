@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@renderer/components/ui/tooltip'
-import { AgentLogo } from '@renderer/agent-logos'
+import { AgentLogo } from '@renderer/components/agent-logos'
 import {
   AGENT_FIELDS,
   FEATURE_FIELDS,

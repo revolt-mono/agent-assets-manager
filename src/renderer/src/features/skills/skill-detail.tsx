@@ -32,7 +32,7 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { toast } from '@renderer/components/ui/toast'
-import { SkillMarkdown } from '@renderer/skill-markdown'
+import { SkillMarkdown } from '@renderer/features/skills/skill-markdown'
 import type { Skill, SkillBody } from '@shared/skill'
 
 function lastUpdated(updatedAt: number): string {

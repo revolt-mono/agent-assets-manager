@@ -12,8 +12,8 @@ import {
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from '@renderer/components/ui/toast'
-import { AgentLogo } from '@renderer/agent-logos'
-import { SkillDetail } from '@renderer/skill-detail'
+import { AgentLogo } from '@renderer/components/agent-logos'
+import { SkillDetail } from '@renderer/features/skills/skill-detail'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId, type Skill } from '@shared/skill'
 
 export function SkillsPage(): React.JSX.Element {
