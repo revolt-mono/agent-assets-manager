@@ -7,9 +7,8 @@ import { parse } from 'smol-toml'
 import {
   AGENT_FIELDS,
   FEATURE_FIELDS,
-  type AgentFieldKey,
   type ConfigValues,
-  type FeatureKey
+  type ProviderValues
 } from '../shared/config'
 import { debouncedBroadcast } from './broadcast'
 
@@ -80,7 +79,8 @@ function valuesFromLines(lines: string[]): ConfigValues {
     ),
     features: Object.fromEntries(
       FEATURE_FIELDS.map((field) => [field.key, readFeatureValue(lines, field)])
-    )
+    ),
+    provider: readProviderValues(lines)
   } as ConfigValues
 }
 
@@ -92,9 +92,26 @@ function readAgentValue(lines: string[], field: AgentField): string | null {
 }
 
 function readFeatureValue(lines: string[], field: FeatureField): boolean {
-  const line = featureLine(lines, field.key)
-  if (!line) return field.default
-  return lineValue(line).split('#')[0].trim() === 'true'
+  const section = featuresSection(lines)
+  const index = section ? keyIndexIn(lines, section, field.key) : -1
+  if (index === -1) return field.default
+  return lineValue(lines[index]).split('#')[0].trim() === 'true'
+}
+
+const PROVIDER_HEADER = /^\s*\[\s*model_providers\.revolt\s*\]\s*(#.*)?$/
+
+function readProviderValues(lines: string[]): ProviderValues {
+  const section = tableSection(lines, PROVIDER_HEADER)
+  const read = (key: string): string => {
+    const index = section ? keyIndexIn(lines, section, key) : -1
+    return index === -1 ? '' : unquote(lineValue(lines[index]))
+  }
+  const selector = topLevelLines(lines).find((line) => matchesKey(line, 'model_provider'))
+  return {
+    enabled: selector !== undefined && unquote(lineValue(selector)) === 'revolt',
+    baseUrl: read('base_url'),
+    apiKey: read('experimental_bearer_token')
+  }
 }
 
 // Validates the untrusted IPC payload while diffing against the file, then
@@ -121,7 +138,61 @@ async function writeValues(next: ConfigValues): Promise<void> {
     upsertFeatureLine(lines, field.key, enabled)
     changed = true
   }
+  const provider = next.provider
+  if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
+    if (provider.enabled !== true && provider.enabled !== false) {
+      throw new Error(`Unsupported provider enabled value: ${provider.enabled}`)
+    }
+    if (/[\r\n"\\]/.test(provider.baseUrl + provider.apiKey)) {
+      throw new Error('Unsupported characters in provider values')
+    }
+    if (provider.enabled && (provider.baseUrl === '' || provider.apiKey === '')) {
+      throw new Error('Enabled provider needs a base URL and an API key')
+    }
+    rewriteProvider(lines, provider)
+    setRequestCompression(lines, provider.enabled)
+    changed = true
+  }
   if (changed) await writeLines(lines)
+}
+
+// Codex compresses request bodies by default, which third-party endpoints
+// rarely accept; force it off while the custom provider is active and restore
+// the default (on) by dropping the override otherwise.
+function setRequestCompression(lines: string[], providerEnabled: boolean): void {
+  if (providerEnabled) {
+    upsertFeatureLine(lines, 'enable_request_compression', false)
+    return
+  }
+  const section = featuresSection(lines)
+  if (!section) return
+  const index = keyIndexIn(lines, section, 'enable_request_compression')
+  if (index !== -1) lines.splice(index, 1)
+}
+
+// The provider block is owned by this app, so a change drops the old block and
+// appends a fresh one instead of patching lines in place. The enabled flag
+// only controls the top-level model_provider selector; the block itself stays
+// as long as it has any content.
+function rewriteProvider(lines: string[], provider: ProviderValues): void {
+  const section = tableSection(lines, PROVIDER_HEADER)
+  if (section) {
+    let start = section.header
+    while (start > 0 && lines[start - 1].trim() === '') start--
+    lines.splice(start, section.end - start)
+  }
+  const selector = topLevelLines(lines).findIndex((line) => matchesKey(line, 'model_provider'))
+  if (provider.enabled) {
+    upsertTopLevelLine(lines, 'model_provider', 'revolt')
+  } else if (selector !== -1 && unquote(lineValue(lines[selector])) === 'revolt') {
+    lines.splice(selector, 1)
+  }
+  if (provider.baseUrl === '' && provider.apiKey === '') return
+  if (lines.length > 0) lines.push('')
+  lines.push('[model_providers.revolt]', 'name = "OpenAI"')
+  if (provider.baseUrl !== '') lines.push(`base_url = "${provider.baseUrl}"`)
+  lines.push('wire_api = "responses"')
+  if (provider.apiKey !== '') lines.push(`experimental_bearer_token = "${provider.apiKey}"`)
 }
 
 async function readLines(): Promise<string[]> {
@@ -142,7 +213,7 @@ async function writeLines(lines: string[]): Promise<void> {
   await writeFile(CONFIG_FILE, text)
 }
 
-function upsertTopLevelLine(lines: string[], key: AgentFieldKey, value: string): void {
+function upsertTopLevelLine(lines: string[], key: string, value: string): void {
   const top = topLevelLines(lines)
   const entry = `${key} = "${value}"`
   const index = top.findIndex((line) => matchesKey(line, key))
@@ -150,17 +221,17 @@ function upsertTopLevelLine(lines: string[], key: AgentFieldKey, value: string):
   else lines.splice(top.length, 0, entry)
 }
 
-function upsertFeatureLine(lines: string[], key: FeatureKey, enabled: boolean): void {
+function upsertFeatureLine(lines: string[], key: string, enabled: boolean): void {
   let section = featuresSection(lines)
   if (!section) {
     if (lines.length > 0) lines.push('')
     lines.push('[features]')
-    section = { start: lines.length, end: lines.length }
+    section = { header: lines.length - 1, start: lines.length, end: lines.length }
   }
   const entry = `${key} = ${enabled}`
-  const index = lines.slice(section.start, section.end).findIndex((line) => matchesKey(line, key))
+  const index = keyIndexIn(lines, section, key)
   if (index !== -1) {
-    lines[section.start + index] = replaceEntryLine(lines[section.start + index], entry)
+    lines[index] = replaceEntryLine(lines[index], entry)
   } else {
     let at = section.end
     while (at > section.start && lines[at - 1].trim() === '') at--
@@ -179,17 +250,24 @@ function topLevelLines(lines: string[]): string[] {
   return tableStart === -1 ? lines : lines.slice(0, tableStart)
 }
 
-function featuresSection(lines: string[]): { start: number; end: number } | null {
-  const header = lines.findIndex((line) => /^\s*\[\s*features\s*\]\s*(#.*)?$/.test(line))
+type TableSection = { header: number; start: number; end: number }
+
+function tableSection(lines: string[], headerPattern: RegExp): TableSection | null {
+  const header = lines.findIndex((line) => headerPattern.test(line))
   if (header === -1) return null
   const next = lines.findIndex((line, index) => index > header && /^\s*\[/.test(line))
-  return { start: header + 1, end: next === -1 ? lines.length : next }
+  return { header, start: header + 1, end: next === -1 ? lines.length : next }
 }
 
-function featureLine(lines: string[], key: FeatureKey): string | undefined {
-  const section = featuresSection(lines)
-  if (!section) return undefined
-  return lines.slice(section.start, section.end).find((line) => matchesKey(line, key))
+function featuresSection(lines: string[]): TableSection | null {
+  return tableSection(lines, /^\s*\[\s*features\s*\]\s*(#.*)?$/)
+}
+
+function keyIndexIn(lines: string[], section: TableSection, key: string): number {
+  for (let index = section.start; index < section.end; index++) {
+    if (matchesKey(lines[index], key)) return index
+  }
+  return -1
 }
 
 function matchesKey(line: string, key: string): boolean {

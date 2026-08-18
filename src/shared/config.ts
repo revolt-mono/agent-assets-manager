@@ -126,9 +126,16 @@ export const FEATURE_FIELDS = [
 export type AgentFieldKey = (typeof AGENT_FIELDS)[number]['key']
 export type FeatureKey = (typeof FEATURE_FIELDS)[number]['key']
 
+export type ProviderValues = {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+}
+
 export type ConfigValues = {
   agent: Record<AgentFieldKey, string | null>
   features: Record<FeatureKey, boolean>
+  provider: ProviderValues
 }
 
 export type ConfigApi = {

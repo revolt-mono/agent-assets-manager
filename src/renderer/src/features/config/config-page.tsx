@@ -10,6 +10,7 @@ import {
   FieldSet,
   FieldTitle
 } from '@renderer/components/ui/field'
+import { Input } from '@renderer/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -25,7 +26,12 @@ import { AgentLogo } from '@renderer/components/agent-logos'
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { cn } from '@renderer/lib/utils'
 import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
-import { AGENT_FIELDS, FEATURE_FIELDS, type ConfigValues } from '@shared/config'
+import {
+  AGENT_FIELDS,
+  FEATURE_FIELDS,
+  type ConfigValues,
+  type ProviderValues
+} from '@shared/config'
 
 export function ConfigPage(): React.JSX.Element {
   const saved = useSavedConfig()
@@ -93,6 +99,14 @@ export function ConfigPage(): React.JSX.Element {
         className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pb-2"
       >
         <FieldSet className="gap-0">
+          <FieldLegend>Model provider</FieldLegend>
+          <ProviderFields
+            provider={draft?.provider}
+            onChange={(provider) => draft && patch({ ...draft, provider })}
+          />
+        </FieldSet>
+
+        <FieldSet className="gap-0">
           <FieldLegend>Agent defaults</FieldLegend>
           {AGENT_FIELDS.map((field) => (
             <AgentFieldRow
@@ -136,13 +150,67 @@ function ConfigRow({
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <Field orientation="horizontal" className="border-b py-4 last:border-b-0">
+    <Field orientation="horizontal" className="border-b py-3 last:border-b-0">
       <FieldContent>
         <FieldTitle>{title}</FieldTitle>
         <FieldDescription>{description}</FieldDescription>
       </FieldContent>
       {children}
     </Field>
+  )
+}
+
+function ProviderFields({
+  provider,
+  onChange
+}: {
+  provider: ProviderValues | undefined
+  onChange: (provider: ProviderValues) => void
+}): React.JSX.Element {
+  // Credentials gate the switch: clearing either field turns the provider off,
+  // and it cannot be re-enabled until both are filled in again.
+  const set = (partial: Partial<ProviderValues>): void => {
+    if (!provider) return
+    const next = { ...provider, ...partial }
+    if (next.baseUrl === '' || next.apiKey === '') next.enabled = false
+    onChange(next)
+  }
+  return (
+    <>
+      <ConfigRow
+        title="Use custom provider"
+        description="Route requests through this provider instead of the built-in one."
+      >
+        <Switch
+          checked={provider?.enabled ?? false}
+          disabled={
+            !provider || (!provider.enabled && (provider.baseUrl === '' || provider.apiKey === ''))
+          }
+          onCheckedChange={(enabled) => set({ enabled })}
+        />
+      </ConfigRow>
+      <ConfigRow title="Base URL" description="Endpoint speaking the OpenAI Responses API.">
+        <Input
+          value={provider?.baseUrl ?? ''}
+          disabled={!provider}
+          placeholder="https://api.example.com/v1"
+          spellCheck={false}
+          className="w-72"
+          onChange={(event) => set({ baseUrl: event.target.value.trim() })}
+        />
+      </ConfigRow>
+      <ConfigRow title="API key" description="Sent as a bearer token; stored in config.toml.">
+        <Input
+          type="password"
+          value={provider?.apiKey ?? ''}
+          disabled={!provider}
+          placeholder="sk-..."
+          autoComplete="off"
+          className="w-72"
+          onChange={(event) => set({ apiKey: event.target.value.trim() })}
+        />
+      </ConfigRow>
+    </>
   )
 }
 
