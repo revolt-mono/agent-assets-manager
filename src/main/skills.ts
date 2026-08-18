@@ -1,5 +1,5 @@
 import { watch, type FSWatcher } from 'fs'
-import { readdir, readFile, rm } from 'fs/promises'
+import { readdir, readFile, rm, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { BrowserWindow, ipcMain, shell } from 'electron'
@@ -107,13 +107,15 @@ async function readSkill(agent: AgentId, id: string): Promise<Located | null> {
   const skillFile = join(dir, SKILL_FILE)
   const raw = await readFile(skillFile, 'utf8').catch(() => null)
   if (raw === null) return null
+  const { mtimeMs } = await stat(skillFile)
   const parsed = parseFrontmatter(raw)
   return {
     skill: {
       agent,
       id,
       name: displayName(parsed.name || id),
-      description: parsed.description ?? ''
+      description: parsed.description ?? '',
+      updatedAt: mtimeMs
     },
     dir,
     skillFile,

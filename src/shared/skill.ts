@@ -11,6 +11,7 @@ export type Skill = {
   id: string
   name: string
   description: string
+  updatedAt: number
 }
 
 export type SkillBody = {

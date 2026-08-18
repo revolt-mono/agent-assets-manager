@@ -35,6 +35,12 @@ import { toast } from '@renderer/components/ui/toast'
 import { SkillMarkdown } from '@renderer/skill-markdown'
 import type { Skill, SkillBody } from '@shared/skill'
 
+function lastUpdated(updatedAt: number): string {
+  const days = Math.floor((Date.now() - updatedAt) / 86_400_000)
+  if (days <= 0) return 'recently'
+  return days === 1 ? '1 day ago' : `${days} days ago`
+}
+
 const REVEAL_LABEL =
   window.api.platform === 'darwin'
     ? 'Reveal in Finder'
@@ -138,8 +144,16 @@ function SkillDetailContent({
     <>
       <div className="flex max-h-[min(85vh,40rem)] min-w-0 flex-col">
         <div className="flex shrink-0 items-start justify-between gap-3">
-          <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-            <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+              <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="truncate">{skill.name}</DialogTitle>
+              <p className="truncate text-xs text-muted-foreground">
+                Last updated {lastUpdated(skill.updatedAt)}.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <DropdownMenu>
@@ -171,12 +185,7 @@ function SkillDetailContent({
           </div>
         </div>
 
-        <div className="shrink-0 space-y-1 pt-3">
-          <DialogTitle>
-            {skill.name} <span className="font-normal text-muted-foreground">Skill</span>
-          </DialogTitle>
-          <DialogDescription>{skill.description}</DialogDescription>
-        </div>
+        <DialogDescription className="shrink-0 pt-3">{skill.description}</DialogDescription>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col py-4">
           <div className="min-h-0 flex-1 overflow-hidden rounded-xl bg-muted/60 py-4">
