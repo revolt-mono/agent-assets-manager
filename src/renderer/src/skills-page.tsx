@@ -55,8 +55,8 @@ export function SkillsPage(): React.JSX.Element {
         }}
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
-        <header className="flex h-12 shrink-0 items-center gap-2 px-4">
-          <TabsList>
+        <header className="flex h-12 shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]">
+          <TabsList className="[-webkit-app-region:no-drag]">
             {AGENT_IDS.map((id) => (
               <TabsTrigger key={id} value={id}>
                 {AGENTS[id].label}

@@ -20,6 +20,10 @@ function createWindow(): void {
     }
   }
   if (process.platform === 'linux') options.icon = icon
+  if (process.platform === 'darwin') {
+    options.titleBarStyle = 'hidden'
+    options.trafficLightPosition = { x: 16, y: 16 }
+  }
   const mainWindow = new BrowserWindow(options)
 
   mainWindow.on('ready-to-show', () => {

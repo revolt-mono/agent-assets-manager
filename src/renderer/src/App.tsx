@@ -6,6 +6,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
@@ -17,8 +18,9 @@ function App(): React.JSX.Element {
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <Sidebar variant="inset" collapsible="icon">
+        <SidebarHeader className="h-9 [-webkit-app-region:drag]" />
         <SidebarContent>
-          <SidebarGroup>
+          <SidebarGroup className="px-0">
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
