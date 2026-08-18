@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { RefreshIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { ThinkingOrb } from 'thinking-orbs'
 import { Button } from '@renderer/components/ui/button'
 import {
   ChartContainer,
@@ -99,12 +100,6 @@ export function UsagePage(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false)
   const busy = refreshing || buckets === undefined
 
-  const refresh = async (): Promise<void> => {
-    setRefreshing(true)
-    await refreshUsage()
-    setRefreshing(false)
-  }
-
   const view = useMemo(() => aggregate(range, buckets ?? []), [range, buckets])
 
   return (
@@ -130,7 +125,11 @@ export function UsagePage(): React.JSX.Element {
           aria-label="Refresh usage"
           className="[-webkit-app-region:no-drag]"
           disabled={busy}
-          onClick={() => void refresh()}
+          onClick={async () => {
+            setRefreshing(true)
+            await refreshUsage()
+            setRefreshing(false)
+          }}
         >
           <IconSwap>
             <IconSwapItem key={busy ? 'busy' : 'idle'}>
@@ -145,8 +144,9 @@ export function UsagePage(): React.JSX.Element {
       </header>
 
       {buckets === undefined ? (
-        <div className="grid flex-1 place-items-center">
-          <Spinner className="size-5" />
+        <div className="flex flex-1 items-center justify-center gap-4">
+          <ThinkingOrb state="composing" size={64} />
+          <span className="shimmer text-sm text-muted-foreground">Parsing usage...</span>
         </div>
       ) : buckets.length === 0 ? (
         <Empty>
