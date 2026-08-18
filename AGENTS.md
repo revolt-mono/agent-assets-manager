@@ -23,5 +23,6 @@
 ## UI
 
 - Apply tight grids, crisp layouts with the 4px design rule.
+- Give every container that may scroll vertically a small vertical margin (`my-2`) so the scrollbar never gets clipped by rounded corners; keep total edge spacing by trading off padding.
 - Build UI with shadcn components first; hand-roll markup and styles only as a last resort when no component fits.
 - Use `className` on shadcn components for layout only (spacing, sizing, alignment); never override their visual styling unless explicitly requested.
