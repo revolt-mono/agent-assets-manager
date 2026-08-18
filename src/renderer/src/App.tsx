@@ -17,9 +17,9 @@ import {
 } from '@renderer/components/ui/sidebar'
 
 const PAGES = [
+  { id: 'config', label: 'Config', icon: Settings02Icon, Page: ConfigPage },
   { id: 'skills', label: 'Skills', icon: BookOpen01Icon, Page: SkillsPage },
-  { id: 'usage', label: 'Usage', icon: Analytics01Icon, Page: UsagePage },
-  { id: 'config', label: 'Config', icon: Settings02Icon, Page: ConfigPage }
+  { id: 'usage', label: 'Usage', icon: Analytics01Icon, Page: UsagePage }
 ] as const
 
 type PageId = (typeof PAGES)[number]['id']
