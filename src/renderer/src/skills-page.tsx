@@ -65,11 +65,8 @@ export function SkillsPage(): React.JSX.Element {
           </TabsList>
         </header>
 
-        <TabsContent
-          value={agent}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-2 pb-4"
-        >
-          <div className="scroll-fade min-h-0 flex-1 overflow-y-auto">
+        <TabsContent value={agent} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="scroll-fade min-h-0 flex-1 overflow-y-auto px-6 pt-2 pb-4">
             {loading ? (
               <div className="grid grid-cols-1 gap-x-12 gap-y-2 md:grid-cols-2">
                 {Array.from({ length: 8 }, (_, index) => (
