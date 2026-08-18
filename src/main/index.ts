@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, type BrowserWindowConstructorOptions } from 
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { registerConfig } from './config'
 import { registerSkills } from './skills'
 
 function createWindow(): void {
@@ -49,8 +50,12 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  const stopWatch = registerSkills()
-  app.on('will-quit', stopWatch)
+  const stopSkills = registerSkills()
+  const stopConfig = registerConfig()
+  app.on('will-quit', () => {
+    stopSkills()
+    stopConfig()
+  })
 
   createWindow()
 

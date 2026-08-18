@@ -16,6 +16,17 @@ const api: RendererApi = {
         ipcRenderer.removeListener('skills:changed', callback)
       }
     }
+  },
+  config: {
+    get: () => ipcRenderer.invoke('config:get'),
+    set: (key, value) => ipcRenderer.invoke('config:set', key, value),
+    setFeature: (key, enabled) => ipcRenderer.invoke('config:set-feature', key, enabled),
+    onChanged: (callback) => {
+      ipcRenderer.on('config:changed', callback)
+      return () => {
+        ipcRenderer.removeListener('config:changed', callback)
+      }
+    }
   }
 }
 
