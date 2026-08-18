@@ -74,7 +74,7 @@ export function SkillsPage(): React.JSX.Element {
               <div className="grid grid-cols-1 gap-x-12 gap-y-2 md:grid-cols-2">
                 {Array.from({ length: 8 }, (_, index) => (
                   <div key={index} className="flex items-center gap-3 px-3 py-2.5">
-                    <Skeleton className="size-10 rounded-xl" />
+                    <Skeleton className="size-10" />
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <Skeleton className="h-3.5 w-28" />
                       <Skeleton className="h-3 w-full" />
@@ -98,13 +98,13 @@ export function SkillsPage(): React.JSX.Element {
                   <Item
                     key={skill.id}
                     render={<button type="button" onClick={() => setSelectedId(skill.id)} />}
-                    className="cursor-pointer rounded-xl border-transparent px-3 py-3 hover:bg-muted/80"
+                    className="cursor-pointer px-3 py-3 hover:bg-muted/80"
                   >
-                    <ItemMedia className="flex size-10 items-center justify-center rounded-xl bg-muted shadow-none">
+                    <ItemMedia className="flex size-10 items-center justify-center">
                       <HugeiconsIcon icon={CubeIcon} strokeWidth={2} className="size-5" />
                     </ItemMedia>
                     <ItemContent className="gap-0.5">
-                      <ItemTitle className="text-sm font-semibold">{skill.name}</ItemTitle>
+                      <ItemTitle>{skill.name}</ItemTitle>
                       <ItemDescription>{skill.description}</ItemDescription>
                     </ItemContent>
                   </Item>

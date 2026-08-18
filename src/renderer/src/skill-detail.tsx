@@ -172,10 +172,10 @@ function SkillDetailContent({
         </div>
 
         <div className="shrink-0 space-y-1 pt-3">
-          <DialogTitle className="text-xl font-semibold tracking-tight">
+          <DialogTitle>
             {skill.name} <span className="font-normal text-muted-foreground">Skill</span>
           </DialogTitle>
-          <DialogDescription className="text-sm/relaxed">{skill.description}</DialogDescription>
+          <DialogDescription>{skill.description}</DialogDescription>
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col py-4">
@@ -191,15 +191,10 @@ function SkillDetailContent({
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-3 pt-2">
-          <Button
-            type="button"
-            variant="destructive"
-            className="rounded-full"
-            onClick={() => setConfirmUninstall(true)}
-          >
+          <Button type="button" variant="destructive" onClick={() => setConfirmUninstall(true)}>
             Uninstall
           </Button>
-          <Button type="button" className="shrink-0 rounded-full" onClick={openInEditor}>
+          <Button type="button" className="shrink-0" onClick={openInEditor}>
             <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
             Open in Editor
           </Button>
