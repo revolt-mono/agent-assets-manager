@@ -51,14 +51,9 @@ const REVEAL_LABEL =
 type SkillDetailProps = {
   skill: Skill | null
   onClose: () => void
-  onUninstalled: (id: string) => void
 }
 
-export function SkillDetail({
-  skill,
-  onClose,
-  onUninstalled
-}: SkillDetailProps): React.JSX.Element {
+export function SkillDetail({ skill, onClose }: SkillDetailProps): React.JSX.Element {
   const [current, setCurrent] = useState(skill)
   if (skill && skill !== current) setCurrent(skill)
 
@@ -78,7 +73,6 @@ export function SkillDetail({
             key={`${current.agent}/${current.id}`}
             skill={current}
             onClose={onClose}
-            onUninstalled={onUninstalled}
           />
         ) : null}
       </DialogContent>
@@ -88,12 +82,10 @@ export function SkillDetail({
 
 function SkillDetailContent({
   skill,
-  onClose,
-  onUninstalled
+  onClose
 }: {
   skill: Skill
   onClose: () => void
-  onUninstalled: (id: string) => void
 }): React.JSX.Element {
   const [body, setBody] = useState<SkillBody | null>(null)
   const [confirmUninstall, setConfirmUninstall] = useState(false)
@@ -134,7 +126,7 @@ function SkillDetailContent({
     try {
       await window.api.skills.uninstall(skill.agent, skill.id)
       setConfirmUninstall(false)
-      onUninstalled(skill.id)
+      onClose()
       toast.add({ title: `Uninstalled ${skill.name}`, type: 'success' })
     } catch {
       toast.add({ title: 'Could not uninstall skill', type: 'error' })
