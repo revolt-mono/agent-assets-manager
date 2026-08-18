@@ -1,12 +1,10 @@
+export const AGENT_IDS = ['codex'] as const
+
+export type AgentId = (typeof AGENT_IDS)[number]
+
 export const AGENTS = {
   codex: { label: 'Codex', skillsDir: ['.codex', 'skills'] }
-} as const
-
-export type AgentId = keyof typeof AGENTS
-
-export const AGENT_IDS =
-  // SAFETY: AGENTS is a closed const object, so its keys are exactly the AgentId union.
-  Object.keys(AGENTS) as AgentId[]
+} as const satisfies Record<AgentId, { label: string; skillsDir: readonly string[] }>
 
 export type Skill = {
   agent: AgentId
