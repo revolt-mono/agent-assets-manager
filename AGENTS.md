@@ -5,7 +5,7 @@
 - `pnpm dev`: run Electron with HMR.
 - `pnpm build`: typecheck (TypeScript 7 `tsc`) then build main/preload/renderer; `pnpm typecheck` runs checks alone.
 - `pnpm lint`: oxlint. `pnpm format` / `pnpm format:check`: oxfmt.
-- `pnpm dlx shadcn@latest add <component>`: vendor shadcn components into `src/renderer/src/components/ui` (directory is excluded from lint, format, and typecheck).
+- `pnpm dlx shadcn@latest add <component>`: vendor shadcn components into `src/renderer/src/components/ui` (directory is excluded from lint and format).
 
 ## Engineering rules
 
