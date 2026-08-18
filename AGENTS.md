@@ -23,4 +23,5 @@
 ## UI
 
 - Apply tight grids, crisp layouts with the 4px design rule.
-- Do not add adhoc styling tokens on shadcn components unless explicitly requested.
+- Build UI with shadcn components first; hand-roll markup and styles only as a last resort when no component fits.
+- Use `className` on shadcn components for layout only (spacing, sizing, alignment); never override their visual styling unless explicitly requested.
