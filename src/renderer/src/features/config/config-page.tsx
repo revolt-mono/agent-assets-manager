@@ -84,35 +84,33 @@ export function ConfigPage(): React.JSX.Element {
 
       <TabsContent
         value="codex"
-        className="scroll-fade min-h-0 flex-1 overflow-y-auto px-6 pt-2 pb-4"
+        className="scroll-fade flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-6 pt-2 pb-4"
       >
-        <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
-          <FieldSet className="gap-0">
-            <FieldLegend>Agent defaults</FieldLegend>
-            {AGENT_FIELDS.map((field) => (
-              <AgentFieldRow
-                key={field.key}
-                field={field}
-                value={values?.agent[field.key] ?? null}
-                disabled={!values}
-                onChange={(value) => updateAgent(field.key, value)}
-              />
-            ))}
-          </FieldSet>
+        <FieldSet className="gap-0">
+          <FieldLegend>Agent defaults</FieldLegend>
+          {AGENT_FIELDS.map((field) => (
+            <AgentFieldRow
+              key={field.key}
+              field={field}
+              value={values?.agent[field.key] ?? null}
+              disabled={!values}
+              onChange={(value) => updateAgent(field.key, value)}
+            />
+          ))}
+        </FieldSet>
 
-          <FieldSet className="gap-0">
-            <FieldLegend>Features</FieldLegend>
-            {FEATURE_FIELDS.map((field) => (
-              <FeatureRow
-                key={field.key}
-                field={field}
-                enabled={values?.features[field.key] ?? false}
-                disabled={!values}
-                onChange={(enabled) => updateFeature(field.key, enabled)}
-              />
-            ))}
-          </FieldSet>
-        </div>
+        <FieldSet className="gap-0">
+          <FieldLegend>Features</FieldLegend>
+          {FEATURE_FIELDS.map((field) => (
+            <FeatureRow
+              key={field.key}
+              field={field}
+              enabled={values?.features[field.key] ?? false}
+              disabled={!values}
+              onChange={(enabled) => updateFeature(field.key, enabled)}
+            />
+          ))}
+        </FieldSet>
       </TabsContent>
     </Tabs>
   )
