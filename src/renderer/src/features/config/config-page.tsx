@@ -186,7 +186,7 @@ function ProviderFields({
           disabled={
             !provider || (!provider.enabled && (provider.baseUrl === '' || provider.apiKey === ''))
           }
-          onCheckedChange={(enabled) => set({ enabled })}
+          onToggle={() => set({ enabled: !provider?.enabled })}
         />
       </ConfigRow>
       <ConfigRow title="Base URL" description="Endpoint speaking the OpenAI Responses API.">
@@ -284,7 +284,7 @@ function FeatureRow({
       }
       description={field.description}
     >
-      <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
+      <Switch checked={enabled} onToggle={() => onChange(!enabled)} disabled={disabled} />
     </ConfigRow>
   )
 }
