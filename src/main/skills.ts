@@ -2,15 +2,10 @@ import { watch, type FSWatcher } from 'fs'
 import { readdir, readFile, rm, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { BrowserWindow, ipcMain, shell } from 'electron'
-import {
-  AGENT_IDS,
-  AGENTS,
-  parseAgent,
-  type AgentId,
-  type Skill,
-  type SkillBody
-} from '../shared/skill'
+import { ipcMain, shell } from 'electron'
+import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '../shared/agent'
+import type { Skill, SkillBody } from '../shared/skill'
+import { debouncedBroadcast } from './broadcast'
 
 const SKILL_FILE = 'SKILL.md'
 const ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
@@ -23,21 +18,13 @@ type Located = {
 }
 
 export function registerSkills(): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const notify = (): void => {
-    clearTimeout(timer)
-    timer = setTimeout(() => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send('skills:changed')
-      }
-    }, 150)
-  }
+  const changed = debouncedBroadcast('skills:changed')
 
   const watched = new Map<string, FSWatcher>()
   const tryWatch = (dir: string, options?: { recursive: boolean }): void => {
     if (watched.has(dir)) return
     try {
-      watched.set(dir, watch(dir, options, notify))
+      watched.set(dir, watch(dir, options, changed.notify))
     } catch {
       // directory does not exist yet; retried on the next list
     }
@@ -71,7 +58,7 @@ export function registerSkills(): () => void {
   for (const agent of AGENT_IDS) watchAgent(agent)
 
   return () => {
-    clearTimeout(timer)
+    changed.stop()
     for (const watcher of watched.values()) watcher.close()
   }
 }

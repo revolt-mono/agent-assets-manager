@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, use, useState } from 'react'
 import {
   Cancel01Icon,
   Copy01Icon,
@@ -48,18 +48,24 @@ const REVEAL_LABEL =
       ? 'Show in Explorer'
       : 'Show in folder'
 
+export type SkillSelection = {
+  skill: Skill
+  body: Promise<SkillBody | null>
+}
+
 type SkillDetailProps = {
-  skill: Skill | null
+  selection: SkillSelection | null
   onClose: () => void
 }
 
-export function SkillDetail({ skill, onClose }: SkillDetailProps): React.JSX.Element {
-  const [current, setCurrent] = useState(skill)
-  if (skill && skill !== current) setCurrent(skill)
+export function SkillDetail({ selection, onClose }: SkillDetailProps): React.JSX.Element {
+  // The last open selection keeps rendering while the dialog animates closed.
+  const [current, setCurrent] = useState(selection)
+  if (selection && selection !== current) setCurrent(selection)
 
   return (
     <Dialog
-      open={skill !== null}
+      open={selection !== null}
       onOpenChange={(next) => {
         if (!next) onClose()
       }}
@@ -70,8 +76,8 @@ export function SkillDetail({ skill, onClose }: SkillDetailProps): React.JSX.Ele
       >
         {current ? (
           <SkillDetailContent
-            key={`${current.agent}/${current.id}`}
-            skill={current}
+            key={`${current.skill.agent}/${current.skill.id}`}
+            selection={current}
             onClose={onClose}
           />
         ) : null}
@@ -81,35 +87,19 @@ export function SkillDetail({ skill, onClose }: SkillDetailProps): React.JSX.Ele
 }
 
 function SkillDetailContent({
-  skill,
+  selection: { skill, body },
   onClose
 }: {
-  skill: Skill
+  selection: SkillSelection
   onClose: () => void
 }): React.JSX.Element {
-  const [body, setBody] = useState<SkillBody | null>(null)
   const [confirmUninstall, setConfirmUninstall] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    window.api.skills
-      .get(skill.agent, skill.id)
-      .then((next) => {
-        if (!cancelled) setBody(next)
-      })
-      .catch(() => {
-        if (!cancelled) toast.add({ title: 'Could not open skill', type: 'error' })
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [skill.agent, skill.id])
-
   async function copyMarkdown(): Promise<void> {
-    if (!body) return
-    await navigator.clipboard.writeText(body.raw)
+    const loaded = await body
+    if (!loaded) return
+    await navigator.clipboard.writeText(loaded.raw)
     toast.add({ title: 'Copied markdown', type: 'success' })
   }
 
@@ -161,7 +151,7 @@ function SkillDetailContent({
                 <HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
                 {REVEAL_LABEL}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={copyMarkdown} disabled={!body}>
+              <DropdownMenuItem onClick={copyMarkdown}>
                 <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} />
                 Copy Markdown
               </DropdownMenuItem>
@@ -177,11 +167,9 @@ function SkillDetailContent({
 
       <div className="my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-muted/60">
         <div className="scroll-fade my-2 min-h-0 flex-1 overflow-y-auto px-4 py-2">
-          {body ? (
-            <SkillMarkdown source={body.markdown} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          )}
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+            <SkillBodyView body={body} />
+          </Suspense>
         </div>
       </div>
 
@@ -213,4 +201,10 @@ function SkillDetailContent({
       </AlertDialog>
     </>
   )
+}
+
+function SkillBodyView({ body }: { body: Promise<SkillBody | null> }): React.JSX.Element {
+  const loaded = use(body)
+  if (!loaded) return <p className="text-sm text-muted-foreground">Could not load this skill.</p>
+  return <SkillMarkdown source={loaded.markdown} />
 }

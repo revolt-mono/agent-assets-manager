@@ -1,14 +1,4 @@
-import type { ConfigApi } from './config'
-import type { UsageApi } from './usage'
-
-export const AGENT_IDS = ['claude', 'codex'] as const
-
-export type AgentId = (typeof AGENT_IDS)[number]
-
-export const AGENTS = {
-  claude: { label: 'Claude', skillsDir: ['.claude', 'skills'] },
-  codex: { label: 'Codex', skillsDir: ['.codex', 'skills'] }
-} as const satisfies Record<AgentId, { label: string; skillsDir: readonly string[] }>
+import type { AgentId } from './agent'
 
 export type Skill = {
   agent: AgentId
@@ -30,17 +20,4 @@ export type SkillsApi = {
   open: (agent: AgentId, id: string) => Promise<void>
   reveal: (agent: AgentId, id: string) => Promise<void>
   onChanged: (callback: () => void) => () => void
-}
-
-export type RendererApi = {
-  platform: 'darwin' | 'win32' | 'other'
-  skills: SkillsApi
-  config: ConfigApi
-  usage: UsageApi
-}
-
-export function parseAgent(value: string): AgentId {
-  const agent = AGENT_IDS.find((id) => id === value)
-  if (agent) return agent
-  throw new Error(`Unknown agent: ${value}`)
 }

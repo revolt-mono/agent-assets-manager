@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { BrowserWindow, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { parse } from 'smol-toml'
 import {
   AGENT_FIELDS,
@@ -11,26 +11,19 @@ import {
   type ConfigValues,
   type FeatureKey
 } from '../shared/config'
+import { debouncedBroadcast } from './broadcast'
 
 const CONFIG_FILE = join(homedir(), '.codex', 'config.toml')
 
 export function registerConfig(): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const notify = (): void => {
-    clearTimeout(timer)
-    timer = setTimeout(() => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send('config:changed')
-      }
-    }, 150)
-  }
+  const changed = debouncedBroadcast('config:changed')
 
   let watcher: FSWatcher | undefined
   const ensureWatch = (): void => {
     if (watcher) return
     try {
       const armed = watch(dirname(CONFIG_FILE), (_event, filename) => {
-        if (!filename || filename === 'config.toml') notify()
+        if (!filename || filename === 'config.toml') changed.notify()
       })
       armed.on('error', () => {
         armed.close()
@@ -67,7 +60,7 @@ export function registerConfig(): () => void {
   ensureWatch()
 
   return () => {
-    clearTimeout(timer)
+    changed.stop()
     watcher?.close()
   }
 }
@@ -189,14 +182,8 @@ function topLevelLines(lines: string[]): string[] {
 function featuresSection(lines: string[]): { start: number; end: number } | null {
   const header = lines.findIndex((line) => /^\s*\[\s*features\s*\]\s*(#.*)?$/.test(line))
   if (header === -1) return null
-  let end = lines.length
-  for (let i = header + 1; i < lines.length; i++) {
-    if (/^\s*\[/.test(lines[i])) {
-      end = i
-      break
-    }
-  }
-  return { start: header + 1, end }
+  const next = lines.findIndex((line, index) => index > header && /^\s*\[/.test(line))
+  return { start: header + 1, end: next === -1 ? lines.length : next }
 }
 
 function featureLine(lines: string[], key: FeatureKey): string | undefined {

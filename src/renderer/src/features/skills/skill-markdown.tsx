@@ -1,4 +1,4 @@
-import { Children, isValidElement, memo, useEffect, useRef, useState } from 'react'
+import { Children, isValidElement, memo, useRef, useState } from 'react'
 import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import Markdown, { type Components } from 'react-markdown'
@@ -71,8 +71,6 @@ function CodeBlockFromPre({ children }: { children?: React.ReactNode }): React.J
 function CodeBlock({ lang, code }: { lang: string; code: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const resetTimer = useRef(0)
-
-  useEffect(() => () => window.clearTimeout(resetTimer.current), [])
 
   async function copy(): Promise<void> {
     await navigator.clipboard.writeText(code)

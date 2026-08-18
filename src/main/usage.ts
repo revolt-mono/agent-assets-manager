@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { ipcMain } from 'electron'
-import type { AgentId } from '../shared/skill'
+import type { AgentId } from '../shared/agent'
 import type { UsageBucket } from '../shared/usage'
 
 // Built-in price table, USD per million tokens.
@@ -256,23 +256,32 @@ async function allEvents(): Promise<UsageEvent[]> {
   const next = new Map<string, CacheEntry>()
   const lists = await Promise.all(
     SOURCES.map(async (source) => {
+      const files = await filesUnder(source.root, source.match)
       const events: UsageEvent[] = []
-      for (const file of await filesUnder(source.root, source.match)) {
-        const info = await stat(file).catch(() => null)
-        if (!info) continue
-        const hit = cache.get(file)
-        let entry: CacheEntry
-        if (hit && hit.mtimeMs === info.mtimeMs && hit.size === info.size) {
-          entry = hit
-        } else {
-          try {
-            entry = { mtimeMs: info.mtimeMs, size: info.size, events: await source.parse(file) }
-          } catch {
-            continue // transient read failure: retry next sweep
-          }
+      // Chunked so a large log history cannot exhaust file descriptors.
+      for (let start = 0; start < files.length; start += 32) {
+        const entries = await Promise.all(
+          files.slice(start, start + 32).map(async (file): Promise<[string, CacheEntry] | null> => {
+            const info = await stat(file).catch(() => null)
+            if (!info) return null
+            const hit = cache.get(file)
+            if (hit && hit.mtimeMs === info.mtimeMs && hit.size === info.size) return [file, hit]
+            try {
+              return [
+                file,
+                { mtimeMs: info.mtimeMs, size: info.size, events: await source.parse(file) }
+              ]
+            } catch {
+              return null // transient read failure: retry next sweep
+            }
+          })
+        )
+        for (const item of entries) {
+          if (!item) continue
+          const [file, entry] = item
+          next.set(file, entry)
+          for (const event of entry.events) events.push(event)
         }
-        next.set(file, entry)
-        for (const event of entry.events) events.push(event)
       }
       return events
     })

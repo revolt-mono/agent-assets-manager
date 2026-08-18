@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { RefreshIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { motion } from 'motion/react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -16,10 +15,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/comp
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
-import { toast } from '@renderer/components/ui/toast'
 import { compact, usd, wholeUsd } from '@renderer/features/usage/format'
+import { refreshUsage, useUsage } from '@renderer/features/usage/store'
 import { ModelsTable, type ModelRow } from '@renderer/features/usage/models-table'
-import { AGENTS } from '@shared/skill'
+import { AGENTS, parseAgent } from '@shared/agent'
 import type { UsageBucket } from '@shared/usage'
 
 const RANGES = [
@@ -31,8 +30,8 @@ const RANGES = [
 type Range = (typeof RANGES)[number]
 
 const chartConfig = {
-  claude: { label: 'Claude', color: 'var(--chart-1)' },
-  codex: { label: 'Codex', color: 'var(--chart-2)' }
+  claude: { label: AGENTS.claude.label, color: 'var(--chart-1)' },
+  codex: { label: AGENTS.codex.label, color: 'var(--chart-2)' }
 } satisfies ChartConfig
 
 type ChartPoint = { start: number; label: string; claude: number; codex: number }
@@ -56,82 +55,57 @@ function emptyPoints({ unit, count }: Range): ChartPoint[] {
   })
 }
 
+// Pure roll-up of the priced buckets inside the range window: chart points,
+// totals, and per-model rows, in one pass.
+function aggregate(range: Range, buckets: UsageBucket[]) {
+  const points = emptyPoints(range)
+  const totals = { cost: 0, tokens: 0, claude: 0, codex: 0 }
+  const rows = new Map<string, ModelRow>()
+  for (const bucket of buckets) {
+    if (bucket.hour < points[0].start) continue
+    // points are sorted; the last one starting at or before the bucket owns it
+    const point = points.findLast((candidate) => candidate.start <= bucket.hour)
+    if (point) point[bucket.agent] += bucket.cost
+    totals.cost += bucket.cost
+    totals.tokens +=
+      bucket.tokens.input +
+      bucket.tokens.output +
+      bucket.tokens.cacheRead +
+      bucket.tokens.cacheWrite
+    totals[bucket.agent] += bucket.cost
+    const key = `${bucket.agent}|${bucket.model}`
+    const row = rows.get(key) ?? {
+      model: bucket.model,
+      agent: AGENTS[bucket.agent].label,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0
+    }
+    row.input += bucket.tokens.input
+    row.output += bucket.tokens.output
+    row.cacheRead += bucket.tokens.cacheRead
+    row.cacheWrite += bucket.tokens.cacheWrite
+    row.cost += bucket.cost
+    rows.set(key, row)
+  }
+  return { points, totals, rows: [...rows.values()] }
+}
+
 export function UsagePage(): React.JSX.Element {
   const [range, setRange] = useState<Range>(RANGES[0])
-  const [buckets, setBuckets] = useState<UsageBucket[] | null>(null)
+  const buckets = useUsage()
   const [refreshing, setRefreshing] = useState(false)
-  const busy = refreshing || buckets === null
-
-  // The main process caches parsed logs per file, so reloading on every visit
-  // is cheap and keeps the chart window and totals current.
-  useEffect(() => {
-    let cancelled = false
-    window.api.usage
-      .get(false)
-      .then((loaded) => {
-        if (!cancelled) setBuckets(loaded)
-      })
-      .catch(() => {
-        if (cancelled) return
-        toast.add({ title: 'Could not load usage', type: 'error' })
-        // keep data from an earlier visit; only settle the initial spinner
-        setBuckets((current) => current ?? [])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const busy = refreshing || buckets === undefined
 
   const refresh = async (): Promise<void> => {
     setRefreshing(true)
-    try {
-      setBuckets(await window.api.usage.get(true))
-    } catch {
-      toast.add({ title: 'Could not load usage', type: 'error' })
-    } finally {
-      setRefreshing(false)
-    }
+    await refreshUsage()
+    setRefreshing(false)
   }
 
-  const view = useMemo(() => {
-    const points = emptyPoints(range)
-    const window = (buckets ?? []).filter((bucket) => bucket.hour >= points[0].start)
-    for (const bucket of window) {
-      // points are sorted; find the last one starting at or before the bucket
-      const point = points.findLast((candidate) => candidate.start <= bucket.hour)
-      if (point) point[bucket.agent] += bucket.cost
-    }
-
-    const totals = { cost: 0, tokens: 0, claude: 0, codex: 0 }
-    const rows = new Map<string, ModelRow>()
-    for (const bucket of window) {
-      const sum =
-        bucket.tokens.input +
-        bucket.tokens.output +
-        bucket.tokens.cacheRead +
-        bucket.tokens.cacheWrite
-      totals.cost += bucket.cost
-      totals.tokens += sum
-      totals[bucket.agent] += bucket.cost
-      const key = `${bucket.agent}|${bucket.model}`
-      const row = rows.get(key) ?? {
-        model: bucket.model,
-        agent: AGENTS[bucket.agent].label,
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        cost: 0
-      }
-      row.input += bucket.tokens.input
-      row.output += bucket.tokens.output
-      row.cacheRead += bucket.tokens.cacheRead
-      row.cacheWrite += bucket.tokens.cacheWrite
-      row.cost += bucket.cost
-      rows.set(key, row)
-    }
-    return { points, totals, rows: [...rows.values()] }
-  }, [buckets, range])
+  const view = useMemo(() => aggregate(range, buckets ?? []), [range, buckets])
 
   return (
     <Tabs
@@ -159,7 +133,7 @@ export function UsagePage(): React.JSX.Element {
           onClick={() => void refresh()}
         >
           <IconSwap>
-            <IconSwapItem key={busy ? 'busy' : 'idle'} as={motion.span}>
+            <IconSwapItem key={busy ? 'busy' : 'idle'}>
               {busy ? (
                 <Spinner className="size-3.5" />
               ) : (
@@ -170,7 +144,7 @@ export function UsagePage(): React.JSX.Element {
         </Button>
       </header>
 
-      {buckets === null ? (
+      {buckets === undefined ? (
         <div className="grid flex-1 place-items-center">
           <Spinner className="size-5" />
         </div>
@@ -216,7 +190,7 @@ export function UsagePage(): React.JSX.Element {
                             className="size-2.5 shrink-0 rounded-[2px]"
                             style={{ background: item.color }}
                           />
-                          {chartConfig[name === 'claude' ? 'claude' : 'codex'].label}
+                          {chartConfig[parseAgent(String(name))].label}
                           <span className="ml-auto font-mono font-medium tabular-nums">
                             {usd.format(Number(value))}
                           </span>

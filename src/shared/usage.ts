@@ -1,4 +1,4 @@
-import type { AgentId } from './skill'
+import type { AgentId } from './agent'
 
 export type UsageTokens = {
   input: number

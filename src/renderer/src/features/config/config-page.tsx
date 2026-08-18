@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { InformationCircleIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { motion } from 'motion/react'
 import { Button } from '@renderer/components/ui/button'
 import {
   Field,
@@ -25,64 +24,33 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { AgentLogo } from '@renderer/components/agent-logos'
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { cn } from '@renderer/lib/utils'
-import {
-  AGENT_FIELDS,
-  FEATURE_FIELDS,
-  type AgentFieldKey,
-  type ConfigValues,
-  type FeatureKey
-} from '@shared/config'
+import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
+import { AGENT_FIELDS, FEATURE_FIELDS, type ConfigValues } from '@shared/config'
 
 export function ConfigPage(): React.JSX.Element {
-  const [saved, setSaved] = useState<ConfigValues | null>(null)
-  const [draft, setDraft] = useState<ConfigValues | null>(null)
+  const saved = useSavedConfig()
+  // Edits overlay the saved snapshot they were based on; any newer snapshot
+  // (external file change, or our own save landing) discards them.
+  const [edit, setEdit] = useState<{ base: ConfigValues; draft: ConfigValues } | null>(null)
+  const draft = edit && edit.base === saved ? edit.draft : saved
   const [justSaved, setJustSaved] = useState(false)
   const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  const load = useCallback(async (): Promise<void> => {
-    try {
-      const values = await window.api.config.get()
-      setSaved(values)
-      setDraft(values)
-    } catch {
-      toast.add({ title: 'Could not load config', type: 'error' })
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-    const unsubscribe = window.api.config.onChanged(() => {
-      void load()
-    })
-    return () => {
-      unsubscribe()
-      clearTimeout(resetTimer.current)
-    }
-  }, [load])
-
-  const updateAgent = (key: AgentFieldKey, value: string): void => {
-    setDraft((current) => current && { ...current, agent: { ...current.agent, [key]: value } })
+  const patch = (next: ConfigValues): void => {
+    if (saved) setEdit({ base: saved, draft: next })
   }
 
-  const updateFeature = (key: FeatureKey, enabled: boolean): void => {
-    setDraft(
-      (current) => current && { ...current, features: { ...current.features, [key]: enabled } }
-    )
-  }
-
-  const dirty = saved !== null && draft !== null && JSON.stringify(saved) !== JSON.stringify(draft)
+  const dirty = draft !== undefined && JSON.stringify(saved) !== JSON.stringify(draft)
 
   const save = async (): Promise<void> => {
     if (!draft) return
     try {
-      await window.api.config.save(draft)
-      setSaved(draft)
+      await saveConfig(draft)
       setJustSaved(true)
       clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => setJustSaved(false), 2000)
     } catch {
       toast.add({ title: 'Could not save config', type: 'error' })
-      void load()
     }
   }
 
@@ -112,7 +80,7 @@ export function ConfigPage(): React.JSX.Element {
             )}
           >
             <IconSwap>
-              <IconSwapItem key={showSaved ? 'saved' : 'idle'} as={motion.span}>
+              <IconSwapItem key={showSaved ? 'saved' : 'idle'}>
                 {showSaved ? <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} /> : 'Save'}
               </IconSwapItem>
             </IconSwap>
@@ -132,7 +100,9 @@ export function ConfigPage(): React.JSX.Element {
               field={field}
               value={draft?.agent[field.key] ?? null}
               disabled={!draft}
-              onChange={(value) => updateAgent(field.key, value)}
+              onChange={(value) =>
+                draft && patch({ ...draft, agent: { ...draft.agent, [field.key]: value } })
+              }
             />
           ))}
         </FieldSet>
@@ -145,7 +115,9 @@ export function ConfigPage(): React.JSX.Element {
               field={field}
               enabled={draft?.features[field.key] ?? false}
               disabled={!draft}
-              onChange={(enabled) => updateFeature(field.key, enabled)}
+              onChange={(enabled) =>
+                draft && patch({ ...draft, features: { ...draft.features, [field.key]: enabled } })
+              }
             />
           ))}
         </FieldSet>
@@ -229,31 +201,22 @@ function FeatureRow({
       title={
         <>
           {field.label}
-          <RecommendationHint note={field.note} />
+          <Tooltip>
+            <TooltipTrigger render={<span className="text-muted-foreground" />}>
+              <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <span>
+                Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
+                {field.note.reason}
+              </span>
+            </TooltipContent>
+          </Tooltip>
         </>
       }
       description={field.description}
     >
       <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
     </ConfigRow>
-  )
-}
-
-function RecommendationHint({
-  note
-}: {
-  note: (typeof FEATURE_FIELDS)[number]['note']
-}): React.JSX.Element {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="text-muted-foreground" />}>
-        <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipContent>
-        <span>
-          Recommended <span className="font-semibold">{note.recommended}</span>: {note.reason}
-        </span>
-      </TooltipContent>
-    </Tooltip>
   )
 }

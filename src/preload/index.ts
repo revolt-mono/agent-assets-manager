@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { RendererApi } from '../shared/skill'
+import type { RendererApi } from '../shared/api'
 
 const api: RendererApi = {
   platform:

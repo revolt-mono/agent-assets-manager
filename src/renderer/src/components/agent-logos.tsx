@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import type { AgentId } from '@shared/skill'
+import type { AgentId } from '@shared/agent'
 
 export function AgentLogo({ agent }: { agent: AgentId }): React.JSX.Element {
   switch (agent) {
