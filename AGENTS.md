@@ -7,6 +7,29 @@
 - `pnpm lint`: oxlint. `pnpm format` / `pnpm format:check`: oxfmt.
 - `pnpm dlx shadcn@latest add <component>`: vendor shadcn components into `src/renderer/src/components/ui` (directory is excluded from lint and format).
 
+## Repo structure
+
+```
+src/
+├── main               electron main process: ipc handlers plus file watchers
+│   ├── config*.ts     agent config io: ipc boundary, claude settings.json, codex
+│   │                  config.toml, comment-preserving toml line editor
+│   ├── skills.ts      skill folders: listing, frontmatter, uninstall/open/reveal
+│   └── usage*.ts      usage-logs parses session jsonl into events; usage prices,
+│                      caches per file, and buckets them for the renderer
+├── preload            contextBridge exposing the typed RendererApi over ipc
+├── shared             ipc contracts: agent ids, config field catalogs, skill and
+│                      usage types
+└── renderer/src
+    ├── features       one vertical slice per page (config, skills, usage), each
+    │                  a page component plus an ipc-backed store
+    ├── components     app chrome (PageHeader, AgentTabsList, logos, IconSwap);
+    │                  ui/ is vendored shadcn
+    ├── lib            store primitive, size ladder, motion springs, cn
+    └── hooks          shared react hooks
+tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
+```
+
 ## Engineering rules
 
 - Choose the simplest correct implementation for current requirements. Only extract shared logic for genuine duplication or when a shared invariant demands the abstraction. Inline one-off/trivial wrappers.
