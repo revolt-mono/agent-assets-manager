@@ -14,6 +14,7 @@ import {
 } from '@renderer/components/ui/chart'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
+import { PageHeader } from '@renderer/components/page-header'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { compact, usd, wholeUsd } from '@renderer/features/usage/format'
@@ -111,37 +112,39 @@ export function UsagePage(): React.JSX.Element {
       }}
       className="min-h-0 flex-1 gap-0 overflow-hidden"
     >
-      <header className="flex h-12 shrink-0 items-center justify-between px-4 [-webkit-app-region:drag]">
-        <TabsList className="[-webkit-app-region:no-drag]">
+      <PageHeader
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Refresh usage"
+            disabled={busy}
+            onClick={async () => {
+              setRefreshing(true)
+              await refreshUsage()
+              setRefreshing(false)
+            }}
+          >
+            <IconSwap>
+              <IconSwapItem key={busy ? 'busy' : 'idle'}>
+                {busy ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} />
+                )}
+              </IconSwapItem>
+            </IconSwap>
+          </Button>
+        }
+      >
+        <TabsList>
           {RANGES.map((candidate) => (
             <TabsTrigger key={candidate.id} value={candidate.id}>
               {candidate.label}
             </TabsTrigger>
           ))}
         </TabsList>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Refresh usage"
-          className="[-webkit-app-region:no-drag]"
-          disabled={busy}
-          onClick={async () => {
-            setRefreshing(true)
-            await refreshUsage()
-            setRefreshing(false)
-          }}
-        >
-          <IconSwap>
-            <IconSwapItem key={busy ? 'busy' : 'idle'}>
-              {busy ? (
-                <Spinner className="size-3.5" />
-              ) : (
-                <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} />
-              )}
-            </IconSwapItem>
-          </IconSwap>
-        </Button>
-      </header>
+      </PageHeader>
 
       {buckets === undefined ? (
         <div className="flex flex-1 items-center justify-center gap-4">

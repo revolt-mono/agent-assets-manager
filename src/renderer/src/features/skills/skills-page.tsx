@@ -10,8 +10,9 @@ import {
   ItemTitle
 } from '@renderer/components/ui/item'
 import { Skeleton } from '@renderer/components/ui/skeleton'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
-import { AgentLogo } from '@renderer/components/agent-logos'
+import { Tabs, TabsContent } from '@renderer/components/ui/tabs'
+import { AgentTabsList } from '@renderer/components/agent-tabs'
+import { PageHeader } from '@renderer/components/page-header'
 import { SkillDetail } from '@renderer/features/skills/skill-detail'
 import { loadSkillBody, useSkills } from '@renderer/features/skills/store'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
@@ -79,16 +80,9 @@ export function SkillsPage(): React.JSX.Element {
         }}
         className="min-h-0 flex-1 gap-0 overflow-hidden"
       >
-        <header className="flex h-12 shrink-0 items-center px-4 [-webkit-app-region:drag]">
-          <TabsList className="[-webkit-app-region:no-drag]">
-            {AGENT_IDS.map((id) => (
-              <TabsTrigger key={id} value={id}>
-                <AgentLogo agent={id} />
-                {AGENTS[id].label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </header>
+        <PageHeader>
+          <AgentTabsList />
+        </PageHeader>
 
         <TabsContent
           value={agent}
