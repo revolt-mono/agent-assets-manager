@@ -27,17 +27,13 @@ tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
 
 ## Release
 
-Releases are manual, arm64-only mac zips published from GitHub Actions (`.github/workflows/release.yml`, blacksmith macOS runner). CI checks run automatically on every push to main and every PR; a release only happens when a `v*` tag is pushed.
+Releases are manual; CI checks run on every push and PR.
 
-1. Bump the version: `pnpm version <x.y.z>` updates `package.json`, commits, and creates the matching `v<x.y.z>` tag. The app version, artifact name, and update metadata all come from `package.json`, so the tag and package version must stay in sync.
-2. Push with `git push --follow-tags`. The tag triggers the workflow, which builds, signs, and uploads a draft release.
-3. Write the changelog by hand on the draft release page. Diff against the previous release tag (`git log <prev-tag>..<new-tag> --oneline`) to enumerate changes, then publish.
+1. `pnpm version <x.y.z>`: bumps `package.json`, commits, tags. Tag and package version must match.
+2. `git push --follow-tags`: the tag triggers a workflow that builds a signed arm64 zip and uploads a draft release.
+3. Hand-write the changelog on the draft (diff via `git log <prev-tag>..<new-tag> --oneline`), then publish.
 
-Notes:
-
-- Never change `appId` (`com.revolt.volt`) or the signing identity (`Local Development Code Signing`); macOS keys TCC permissions and app data off them. The identity is a long-lived self-signed cert stored in the `CSC_LINK` / `CSC_KEY_PASSWORD` repo secrets, with its public cert committed at `build/codesign-cert.pem` so the runner can trust it.
-- Hardened runtime stays off (`hardenedRuntime: false`): its library validation requires a team id that a self-signed cert lacks, and the app crashes at launch with it on.
-- The app is not notarized. Downloads carry a quarantine flag and need `xattr -dr com.apple.quarantine Volt.app` (or a System Settings override) to open.
+Never change `appId` or `mac.identity` in `electron-builder.yml`, and keep `hardenedRuntime: false`; the self-signed cert lives in the `CSC_LINK` / `CSC_KEY_PASSWORD` repo secrets.
 
 ## Engineering rules
 
