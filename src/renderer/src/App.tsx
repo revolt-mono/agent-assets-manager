@@ -32,7 +32,9 @@ function App(): React.JSX.Element {
       <Sidebar variant="inset" collapsible="icon">
         <div className="h-9 shrink-0 [-webkit-app-region:drag]" />
         <SidebarContent>
-          <SidebarGroup>
+          {/* Icon center at 24px sits on the red traffic light center:
+              sidebar p-2 (8) + default button p-2 (8) + half of size-4 icon (8). */}
+          <SidebarGroup className="px-0">
             <SidebarGroupContent>
               <SidebarMenu>
                 {PAGES.map((item) => (
