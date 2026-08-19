@@ -1,10 +1,11 @@
 {
-  "name": "electron-app",
-  "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "name": "volt",
+  "version": "0.1.0",
+  "description": "Manager for coding agent configs, skills, and usage",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "packageManager": "pnpm@10.33.2",
+  "author": "revolt-mono",
+  "homepage": "https://github.com/revolt-mono/agent-assets-manager",
   "scripts": {
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -18,9 +19,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
