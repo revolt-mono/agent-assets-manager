@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Manager for coding agent configs, skills, and usage",
   "main": "./out/main/index.js",
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.22.0",
   "author": "revolt-mono",
   "homepage": "https://github.com/revolt-mono/agent-assets-manager",
   "scripts": {
@@ -66,11 +66,5 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.11"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild"
-    ]
   }
 }
