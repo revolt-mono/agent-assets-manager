@@ -23,6 +23,8 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  # timestamping every electron resource adds minutes and gives a self-signed cert no value
+  timestamp: none
   # hardened runtime enforces team-id library validation, which a teamless
   # self-signed cert can never satisfy; we don't notarize, so turn it off
   hardenedRuntime: false
