@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AgentId } from '../shared/agent'
 import type { RendererApi } from '../shared/api'
+import type { UpdateState } from '../shared/update'
 
 const api: RendererApi = {
   platform:
@@ -33,16 +34,23 @@ const api: RendererApi = {
     get: (fresh) => ipcRenderer.invoke('usage:get', fresh)
   },
   update: {
-    get: () => ipcRenderer.invoke('update:get'),
-    onReady: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, version: string): void =>
-        callback(version)
-      ipcRenderer.on('update:ready', listener)
+    observe: (callback) => {
+      let observing = true
+      let receivedUpdate = false
+      const listener = (_event: Electron.IpcRendererEvent, state: UpdateState): void => {
+        receivedUpdate = true
+        callback(state)
+      }
+      ipcRenderer.on('update:changed', listener)
+      void ipcRenderer.invoke('update:get').then((state: UpdateState) => {
+        if (observing && !receivedUpdate) callback(state)
+      })
       return () => {
-        ipcRenderer.removeListener('update:ready', listener)
+        observing = false
+        ipcRenderer.removeListener('update:changed', listener)
       }
     },
-    install: () => ipcRenderer.send('update:install')
+    proceed: () => ipcRenderer.send('update:proceed')
   }
 }
 
