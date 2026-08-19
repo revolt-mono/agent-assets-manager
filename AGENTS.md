@@ -25,16 +25,6 @@ src/
 tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
 ```
 
-## Release
-
-Releases are manual; CI checks run on every push and PR.
-
-1. `pnpm version <x.y.z>`: bumps `package.json`, commits, tags. Tag and package version must match.
-2. `git push --follow-tags`: the tag triggers a workflow that builds a signed arm64 zip and uploads a draft release.
-3. Hand-write the changelog on the draft (diff via `git log <prev-tag>..<new-tag> --oneline`), then publish.
-
-Never change `appId` or `mac.identity` in `electron-builder.yml`, and keep `hardenedRuntime: false`; the self-signed cert lives in the `CSC_LINK` / `CSC_KEY_PASSWORD` repo secrets.
-
 ## Engineering rules
 
 - Choose the simplest correct implementation for current requirements. Only extract shared logic for genuine duplication or when a shared invariant demands the abstraction. Inline one-off/trivial wrappers.
