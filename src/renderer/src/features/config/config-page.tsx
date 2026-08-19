@@ -28,7 +28,7 @@ import { cn } from '@renderer/lib/utils'
 import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
 import {
-  CLAUDE_ENV_FIELDS,
+  CLAUDE_FEATURE_FIELDS,
   CODEX_AGENT_FIELDS,
   CODEX_FEATURE_FIELDS,
   type AgentConfig,
@@ -137,7 +137,7 @@ export function ConfigPage(): React.JSX.Element {
         {agent === 'claude' ? (
           <FieldSet className="gap-0">
             <FieldLegend>Features</FieldLegend>
-            {CLAUDE_ENV_FIELDS.map((field) => (
+            {CLAUDE_FEATURE_FIELDS.map((field) => (
               <FeatureRow
                 key={field.key}
                 field={field}

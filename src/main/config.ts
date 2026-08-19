@@ -6,10 +6,11 @@ import { ipcMain } from 'electron'
 import { parse } from 'smol-toml'
 import { AGENT_IDS, parseAgent, type AgentId } from '../shared/agent'
 import {
-  CLAUDE_ENV_FIELDS,
+  CLAUDE_FEATURE_FIELDS,
   CODEX_AGENT_FIELDS,
   CODEX_FEATURE_FIELDS,
   type ClaudeConfig,
+  type ClaudeSettingKey,
   type CodexConfig,
   type ProviderValues
 } from '../shared/config'
@@ -180,7 +181,9 @@ async function writeCodexConfig(next: CodexConfig): Promise<void> {
 // hooks, user-set env vars). The declared type covers only the managed slice;
 // the parsed object round-trips through JSON.stringify, so every other key
 // survives byte-for-byte in value terms, reformatted to two-space indent.
-type ClaudeSettings = { env?: Record<string, string> }
+type ClaudeSettings = { env?: Record<string, string> } & {
+  [K in ClaudeSettingKey]?: boolean
+}
 
 async function loadClaudeSettings(): Promise<ClaudeSettings> {
   const raw = await readFile(CLAUDE_FILE, 'utf8').catch((error) => {
@@ -204,6 +207,12 @@ async function loadClaudeSettings(): Promise<ClaudeSettings> {
   ) {
     throw new Error('Unsupported settings.json env shape')
   }
+  // Parse the managed flags here so the rest of the module can trust the
+  // declared boolean type; a non-boolean hand edit counts as unset.
+  for (const field of CLAUDE_FEATURE_FIELDS) {
+    if (field.storage !== 'settings') continue
+    if (settings[field.key] !== true && settings[field.key] !== false) delete settings[field.key]
+  }
   return settings
 }
 
@@ -216,7 +225,12 @@ function claudeConfigFromSettings(settings: ClaudeSettings): ClaudeConfig {
   }
   // SAFETY: fromEntries over the complete field list yields every key.
   return Object.fromEntries(
-    CLAUDE_ENV_FIELDS.map((field) => [field.key, enabled(settings.env?.[field.key])])
+    CLAUDE_FEATURE_FIELDS.map((field) => [
+      field.key,
+      field.storage === 'env'
+        ? enabled(settings.env?.[field.key])
+        : (settings[field.key] ?? field.default)
+    ])
   ) as ClaudeConfig
 }
 
@@ -225,14 +239,17 @@ async function writeClaudeConfig(next: ClaudeConfig): Promise<void> {
   const current = claudeConfigFromSettings(settings)
   const env = { ...settings.env }
   let changed = false
-  for (const field of CLAUDE_ENV_FIELDS) {
+  for (const field of CLAUDE_FEATURE_FIELDS) {
     const enabled = next[field.key]
     if (enabled !== true && enabled !== false) {
       throw new Error(`Unsupported ${field.key} value: ${enabled}`)
     }
     if (enabled === current[field.key]) continue
-    if (enabled) env[field.key] = '1'
-    else delete env[field.key]
+    if (field.storage === 'env') {
+      if (enabled) env[field.key] = '1'
+      else delete env[field.key]
+    } else if (enabled === field.default) delete settings[field.key]
+    else settings[field.key] = enabled
     changed = true
   }
   if (!changed) return

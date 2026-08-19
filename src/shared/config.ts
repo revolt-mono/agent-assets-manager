@@ -125,55 +125,169 @@ export const CODEX_FEATURE_FIELDS = [
   }
 ] as const
 
-// Claude Code toggles map 1:1 to entries in the `env` object of
-// ~/.claude/settings.json; a truthy value (anything but "", "0", "false")
-// means on, an absent key means off. Turning on writes "1", off deletes.
-export const CLAUDE_ENV_FIELDS = [
+// Claude Code feature toggles, all persisted in ~/.claude/settings.json.
+// `settings` storage is a top-level boolean key: absent means the field
+// default, and saving the default deletes the key. `env` storage is an entry
+// in the `env` object: a truthy value (anything but "", "0", "false") means
+// on, an absent key means off; turning on writes "1", off deletes.
+export const CLAUDE_FEATURE_FIELDS = [
+  {
+    key: 'disableClaudeAiConnectors',
+    storage: 'settings',
+    default: false,
+    label: 'Disable claude.ai connectors',
+    description: 'Stop auto-fetching and connecting MCP connectors from claude.ai.',
+    note: {
+      recommended: 'on',
+      reason:
+        'claude.ai connectors auto-attach MCP servers you never asked for and bloat the context.'
+    }
+  },
+  {
+    key: 'disableArtifact',
+    storage: 'settings',
+    default: false,
+    label: 'Disable artifacts',
+    description: 'Remove the Artifact tool that publishes session output to claude.ai.',
+    note: {
+      recommended: 'on',
+      reason:
+        'publishing session output to claude.ai is never wanted, and the tool wastes prompt space.'
+    }
+  },
+  {
+    key: 'disableRemoteControl',
+    storage: 'settings',
+    default: false,
+    label: 'Disable remote control',
+    description: 'Block remote-control sessions, auto-start, and the in-session toggle.',
+    note: {
+      recommended: 'on',
+      reason:
+        'nothing should drive local sessions remotely; removing remote control cuts attack surface and prompt bloat.'
+    }
+  },
+  {
+    key: 'promptSuggestionEnabled',
+    storage: 'settings',
+    default: true,
+    label: 'Prompt suggestions',
+    description: 'Show grayed-out predictions in the prompt input.',
+    note: {
+      recommended: 'off',
+      reason: 'grayed-out predictions distract while typing and add background requests.'
+    }
+  },
+  {
+    key: 'switchModelsOnFlag',
+    storage: 'settings',
+    default: true,
+    label: 'Switch models on flag',
+    description: 'Auto-switch to the fallback model when a safety classifier flags a request.',
+    note: {
+      recommended: 'off',
+      reason: 'a silent model swap changes quality mid-session; pause and decide yourself.'
+    }
+  },
+  {
+    key: 'wheelScrollAccelerationEnabled',
+    storage: 'settings',
+    default: true,
+    label: 'Wheel scroll acceleration',
+    description: 'Speed up mouse-wheel scrolling during fast scrolls in fullscreen mode.',
+    note: {
+      recommended: 'off',
+      reason: 'a constant rate per notch is predictable; acceleration overshoots in fullscreen.'
+    }
+  },
   {
     key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+    storage: 'env',
     label: 'Disable nonessential traffic',
-    description: 'Skip auto-updates, telemetry, error reporting, and other background requests.'
+    description: 'Skip auto-updates, telemetry, error reporting, and other background requests.',
+    note: {
+      recommended: 'on',
+      reason: 'auto-updates, telemetry, and error reporting are background traffic with no value.'
+    }
   },
   {
     key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS',
+    storage: 'env',
     label: 'Disable bundled skills',
-    description: 'Remove built-in skills and slash commands like /code-review and /run.'
+    description: 'Remove built-in skills and slash commands like /code-review and /run.',
+    note: {
+      recommended: 'off',
+      reason:
+        'a blanket disable also removes useful built-in commands; deny unwanted ones individually.'
+    }
   },
   {
     key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL',
+    storage: 'env',
     label: 'Disable Claude API skill',
-    description: 'Stop the bundled skill that auto-triggers on Anthropic SDK and API code.'
+    description: 'Stop the bundled skill that auto-triggers on Anthropic SDK and API code.',
+    note: {
+      recommended: 'on',
+      reason: 'auto-triggers on Anthropic SDK code and injects context you rarely need.'
+    }
   },
   {
     key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL',
+    storage: 'env',
     label: 'Disable Claude Code skill',
-    description: 'Stop the bundled guide skill that answers Claude Code usage questions.'
+    description: 'Stop the bundled guide skill that answers Claude Code usage questions.',
+    note: {
+      recommended: 'on',
+      reason: 'usage questions are rare, so the bundled guide skill just wastes context.'
+    }
   },
   {
     key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS',
+    storage: 'env',
     label: 'Disable git instructions',
-    description: 'Drop the built-in git workflow guidance from the system prompt.'
+    description: 'Drop the built-in git workflow guidance from the system prompt.',
+    note: {
+      recommended: 'on',
+      reason: 'the built-in git guidance conflicts with your own rules and bloats the prompt.'
+    }
   },
   {
     key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
+    storage: 'env',
     label: 'Disable auto memory',
-    description: 'Stop reading and writing per-project memory notes across sessions.'
+    description: 'Stop reading and writing per-project memory notes across sessions.',
+    note: {
+      recommended: 'on',
+      reason: 'stale project memory leaks into unrelated sessions; manage context yourself.'
+    }
   },
   {
     key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT',
+    storage: 'env',
     label: 'Simple system prompt',
-    description: 'Collapse the system prompt to a minimal identity-and-cwd version.'
+    description: 'Collapse the system prompt to a minimal identity-and-cwd version.',
+    note: {
+      recommended: 'on',
+      reason:
+        'a minimal prompt saves tokens and interferes less; your own config supplies the rules.'
+    }
   },
   {
     key: 'CLAUDE_CODE_NO_FLICKER',
+    storage: 'env',
     label: 'No-flicker renderer',
-    description: 'Render the TUI on the alternate screen with mouse support and no flicker.'
+    description: 'Render the TUI on the alternate screen with mouse support and no flicker.',
+    note: {
+      recommended: 'on',
+      reason: 'alternate-screen rendering avoids flicker and adds mouse support in fullscreen.'
+    }
   }
 ] as const
 
 type CodexAgentFieldKey = (typeof CODEX_AGENT_FIELDS)[number]['key']
 type CodexFeatureKey = (typeof CODEX_FEATURE_FIELDS)[number]['key']
-type ClaudeEnvKey = (typeof CLAUDE_ENV_FIELDS)[number]['key']
+type ClaudeFeatureField = (typeof CLAUDE_FEATURE_FIELDS)[number]
+export type ClaudeSettingKey = Extract<ClaudeFeatureField, { storage: 'settings' }>['key']
 
 export type ProviderValues = {
   enabled: boolean
@@ -181,7 +295,7 @@ export type ProviderValues = {
   apiKey: string
 }
 
-export type ClaudeConfig = Record<ClaudeEnvKey, boolean>
+export type ClaudeConfig = Record<ClaudeFeatureField['key'], boolean>
 
 export type CodexConfig = {
   agent: Record<CodexAgentFieldKey, string | null>
