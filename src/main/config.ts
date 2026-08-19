@@ -1,36 +1,49 @@
 import { watch, type FSWatcher } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
-import { dirname, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { ipcMain } from 'electron'
 import { parse } from 'smol-toml'
+import { AGENT_IDS, parseAgent, type AgentId } from '../shared/agent'
 import {
-  AGENT_FIELDS,
-  FEATURE_FIELDS,
-  type ConfigValues,
+  CLAUDE_ENV_FIELDS,
+  CODEX_AGENT_FIELDS,
+  CODEX_FEATURE_FIELDS,
+  type ClaudeConfig,
+  type CodexConfig,
   type ProviderValues
 } from '../shared/config'
 import { debouncedBroadcast } from './broadcast'
 
-const CONFIG_FILE = join(homedir(), '.codex', 'config.toml')
+const CODEX_FILE = join(homedir(), '.codex', 'config.toml')
+const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
+const CONFIG_FILES = { claude: CLAUDE_FILE, codex: CODEX_FILE } satisfies Record<AgentId, string>
 
 export function registerConfig(): () => void {
-  const changed = debouncedBroadcast('config:changed')
+  // Per-agent broadcasts so a change to one agent's file only revalidates
+  // that agent's store; a shared notify would discard the other tab's draft.
+  const changed = {
+    claude: debouncedBroadcast('config:changed', 'claude'),
+    codex: debouncedBroadcast('config:changed', 'codex')
+  }
 
-  let watcher: FSWatcher | undefined
+  const watchers = new Map<AgentId, FSWatcher>()
   const ensureWatch = (): void => {
-    if (watcher) return
-    try {
-      const armed = watch(dirname(CONFIG_FILE), (_event, filename) => {
-        if (!filename || filename === 'config.toml') changed.notify()
-      })
-      armed.on('error', () => {
-        armed.close()
-        if (watcher === armed) watcher = undefined
-      })
-      watcher = armed
-    } catch {
-      // directory does not exist yet; re-armed after the next get or set
+    for (const agent of AGENT_IDS) {
+      if (watchers.has(agent)) continue
+      const file = CONFIG_FILES[agent]
+      try {
+        const armed = watch(dirname(file), (_event, filename) => {
+          if (!filename || filename === basename(file)) changed[agent].notify()
+        })
+        armed.on('error', () => {
+          armed.close()
+          if (watchers.get(agent) === armed) watchers.delete(agent)
+        })
+        watchers.set(agent, armed)
+      } catch {
+        // directory does not exist yet; re-armed after the next get or set
+      }
     }
   }
 
@@ -46,47 +59,60 @@ export function registerConfig(): () => void {
     return run
   }
 
-  ipcMain.handle('config:get', async () => {
-    const values = await serialize(async () => valuesFromDoc(await loadDoc()))
+  ipcMain.handle('config:get', async (_event, agent: string) => {
+    const values = await serialize(async () =>
+      parseAgent(agent) === 'claude'
+        ? claudeConfigFromSettings(await loadClaudeSettings())
+        : codexConfigFromDoc(await loadCodexDoc())
+    )
     ensureWatch()
     return values
   })
-  ipcMain.handle('config:save', async (_event, values: ConfigValues) => {
-    await serialize(() => writeValues(values))
-    ensureWatch()
-  })
+  ipcMain.handle(
+    'config:save',
+    async (_event, agent: string, values: ClaudeConfig | CodexConfig) => {
+      // SAFETY: the payload is untrusted, but each writer re-validates every
+      // field before touching disk; the cast only selects the expected shape.
+      await serialize(() =>
+        parseAgent(agent) === 'claude'
+          ? writeClaudeConfig(values as ClaudeConfig)
+          : writeCodexConfig(values as CodexConfig)
+      )
+      ensureWatch()
+    }
+  )
 
   ensureWatch()
 
   return () => {
-    changed.stop()
-    watcher?.close()
+    for (const agent of AGENT_IDS) changed[agent].stop()
+    for (const watcher of watchers.values()) watcher.close()
   }
 }
 
 const FEATURES_TABLE = 'features'
 const PROVIDER_TABLE = 'model_providers.revolt'
 
-async function loadDoc(): Promise<TomlDoc> {
-  const raw = await readFile(CONFIG_FILE, 'utf8').catch((error) => {
+async function loadCodexDoc(): Promise<TomlDoc> {
+  const raw = await readFile(CODEX_FILE, 'utf8').catch((error) => {
     if (error.code === 'ENOENT') return ''
     throw error
   })
   return new TomlDoc(raw)
 }
 
-function valuesFromDoc(doc: TomlDoc): ConfigValues {
+function codexConfigFromDoc(doc: TomlDoc): CodexConfig {
   // SAFETY: fromEntries over the complete field lists yields every key.
   return {
     agent: Object.fromEntries(
-      AGENT_FIELDS.map((field) => {
+      CODEX_AGENT_FIELDS.map((field) => {
         const value = doc.get(null, field.key)
         if (value === undefined) return [field.key, field.default]
         return [field.key, field.options.some((option) => option.value === value) ? value : null]
       })
     ),
     features: Object.fromEntries(
-      FEATURE_FIELDS.map((field) => [
+      CODEX_FEATURE_FIELDS.map((field) => [
         field.key,
         doc.getBool(FEATURES_TABLE, field.key) ?? field.default
       ])
@@ -96,16 +122,16 @@ function valuesFromDoc(doc: TomlDoc): ConfigValues {
       baseUrl: doc.get(PROVIDER_TABLE, 'base_url') ?? '',
       apiKey: doc.get(PROVIDER_TABLE, 'experimental_bearer_token') ?? ''
     }
-  } as ConfigValues
+  } as CodexConfig
 }
 
 // Validates the untrusted IPC payload while diffing against the file, then
 // writes changed entries in one pass; throws before touching disk.
-async function writeValues(next: ConfigValues): Promise<void> {
-  const doc = await loadDoc()
-  const current = valuesFromDoc(doc)
+async function writeCodexConfig(next: CodexConfig): Promise<void> {
+  const doc = await loadCodexDoc()
+  const current = codexConfigFromDoc(doc)
   let changed = false
-  for (const field of AGENT_FIELDS) {
+  for (const field of CODEX_AGENT_FIELDS) {
     const value = next.agent[field.key]
     if (value === null || value === current.agent[field.key]) continue
     if (!field.options.some((option) => option.value === value)) {
@@ -114,7 +140,7 @@ async function writeValues(next: ConfigValues): Promise<void> {
     doc.set(null, field.key, value)
     changed = true
   }
-  for (const field of FEATURE_FIELDS) {
+  for (const field of CODEX_FEATURE_FIELDS) {
     const enabled = next.features[field.key]
     if (enabled !== true && enabled !== false) {
       throw new Error(`Unsupported ${field.key} value: ${enabled}`)
@@ -146,8 +172,74 @@ async function writeValues(next: ConfigValues): Promise<void> {
   const text = doc.toString()
   // abort before touching disk if the edit produced invalid TOML
   parse(text)
-  await mkdir(dirname(CONFIG_FILE), { recursive: true })
-  await writeFile(CONFIG_FILE, text)
+  await mkdir(dirname(CODEX_FILE), { recursive: true })
+  await writeFile(CODEX_FILE, text)
+}
+
+// ~/.claude/settings.json holds much more than the env toggles (permissions,
+// hooks, user-set env vars). The declared type covers only the managed slice;
+// the parsed object round-trips through JSON.stringify, so every other key
+// survives byte-for-byte in value terms, reformatted to two-space indent.
+type ClaudeSettings = { env?: Record<string, string> }
+
+async function loadClaudeSettings(): Promise<ClaudeSettings> {
+  const raw = await readFile(CLAUDE_FILE, 'utf8').catch((error) => {
+    if (error.code === 'ENOENT') return ''
+    throw error
+  })
+  if (raw.trim() === '') return {}
+  // Reject a mis-shaped file here so a later save can never rewrite it from
+  // scratch or corrupt it by spreading a non-object env. Object() returns its
+  // argument only for objects, rejecting every JSON primitive.
+  const parsed: unknown = JSON.parse(raw)
+  if (Object(parsed) !== parsed || Array.isArray(parsed)) {
+    throw new Error('Unsupported settings.json shape')
+  }
+  // SAFETY: the root is a plain object per the check above and env is checked
+  // next; the declared type covers only the managed slice of the file.
+  const settings = parsed as ClaudeSettings
+  if (
+    settings.env !== undefined &&
+    (Object(settings.env) !== settings.env || Array.isArray(settings.env))
+  ) {
+    throw new Error('Unsupported settings.json env shape')
+  }
+  return settings
+}
+
+function claudeConfigFromSettings(settings: ClaudeSettings): ClaudeConfig {
+  // Claude Code accepts values like "true" beside "1" (and reads some flags
+  // by mere presence), so anything but an explicit off value counts as on.
+  const enabled = (value: string | undefined): boolean => {
+    const normalized = value?.trim().toLowerCase() ?? ''
+    return normalized !== '' && normalized !== '0' && normalized !== 'false'
+  }
+  // SAFETY: fromEntries over the complete field list yields every key.
+  return Object.fromEntries(
+    CLAUDE_ENV_FIELDS.map((field) => [field.key, enabled(settings.env?.[field.key])])
+  ) as ClaudeConfig
+}
+
+async function writeClaudeConfig(next: ClaudeConfig): Promise<void> {
+  const settings = await loadClaudeSettings()
+  const current = claudeConfigFromSettings(settings)
+  const env = { ...settings.env }
+  let changed = false
+  for (const field of CLAUDE_ENV_FIELDS) {
+    const enabled = next[field.key]
+    if (enabled !== true && enabled !== false) {
+      throw new Error(`Unsupported ${field.key} value: ${enabled}`)
+    }
+    if (enabled === current[field.key]) continue
+    if (enabled) env[field.key] = '1'
+    else delete env[field.key]
+    changed = true
+  }
+  if (!changed) return
+  if (Object.keys(env).length > 0) settings.env = env
+  else delete settings.env
+  await mkdir(dirname(CLAUDE_FILE), { recursive: true })
+  await writeFile(CLAUDE_FILE, JSON.stringify(settings, null, 2) + '\n')
 }
 
 // The provider table is owned by this app, so a change drops the old table and

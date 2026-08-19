@@ -26,50 +26,81 @@ import { AgentLogo } from '@renderer/components/agent-logos'
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { cn } from '@renderer/lib/utils'
 import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
+import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
 import {
-  AGENT_FIELDS,
-  FEATURE_FIELDS,
-  type ConfigValues,
+  CLAUDE_ENV_FIELDS,
+  CODEX_AGENT_FIELDS,
+  CODEX_FEATURE_FIELDS,
+  type AgentConfig,
   type ProviderValues
 } from '@shared/config'
 
-export function ConfigPage(): React.JSX.Element {
-  const saved = useSavedConfig()
-  // Edits overlay the saved snapshot they were based on; any newer snapshot
-  // (external file change, or our own save landing) discards them.
-  const [edit, setEdit] = useState<{ base: ConfigValues; draft: ConfigValues } | null>(null)
+// One agent's edit session: the draft overlays the saved snapshot it was
+// based on and survives tab switches; a newer snapshot (external file change,
+// or our own save landing) discards it.
+type ConfigEditor<A extends AgentId> = {
+  draft: AgentConfig[A] | undefined
+  dirty: boolean
+  patch: (draft: AgentConfig[A]) => void
+  save: () => Promise<void>
+}
+
+function useConfigEditor<A extends AgentId>(agent: A): ConfigEditor<A> {
+  const saved = useSavedConfig(agent)
+  const [edit, setEdit] = useState<{ base: AgentConfig[A]; draft: AgentConfig[A] } | null>(null)
   const draft = edit && edit.base === saved ? edit.draft : saved
-  const [justSaved, setJustSaved] = useState(false)
+  return {
+    draft,
+    dirty: draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved),
+    patch: (next) => {
+      if (saved) setEdit({ base: saved, draft: next })
+    },
+    save: async () => {
+      if (draft) await saveConfig(agent, draft)
+    }
+  }
+}
+
+export function ConfigPage(): React.JSX.Element {
+  const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
+  const claude = useConfigEditor('claude')
+  const codex = useConfigEditor('codex')
+  const active = agent === 'claude' ? claude : codex
+  // Tracks which agent's save just landed so the checkmark only shows on the
+  // tab that was saved, even when the save resolves after a tab switch.
+  const [justSaved, setJustSaved] = useState<AgentId | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  const patch = (next: ConfigValues): void => {
-    if (saved) setEdit({ base: saved, draft: next })
-  }
-
-  const dirty = draft !== undefined && JSON.stringify(saved) !== JSON.stringify(draft)
-
   const save = async (): Promise<void> => {
-    if (!draft) return
     try {
-      await saveConfig(draft)
-      setJustSaved(true)
+      await active.save()
+      setJustSaved(agent)
       clearTimeout(resetTimer.current)
-      resetTimer.current = setTimeout(() => setJustSaved(false), 2000)
+      resetTimer.current = setTimeout(() => setJustSaved(null), 2000)
     } catch {
       toast.add({ title: 'Could not save config', type: 'error' })
     }
   }
 
-  const showSaved = justSaved && !dirty
+  const showSaved = justSaved === agent && !active.dirty
 
   return (
-    <Tabs value="codex" className="min-h-0 flex-1 gap-0 overflow-hidden">
+    <Tabs
+      value={agent}
+      onValueChange={(value) => {
+        if (value == null) return
+        setAgent(parseAgent(value))
+      }}
+      className="min-h-0 flex-1 gap-0 overflow-hidden"
+    >
       <header className="flex h-12 shrink-0 items-center justify-between px-4 [-webkit-app-region:drag]">
         <TabsList className="[-webkit-app-region:no-drag]">
-          <TabsTrigger value="codex">
-            <AgentLogo agent="codex" />
-            Codex
-          </TabsTrigger>
+          {AGENT_IDS.map((id) => (
+            <TabsTrigger key={id} value={id}>
+              <AgentLogo agent={id} />
+              {AGENTS[id].label}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <div className="grid place-items-center [-webkit-app-region:no-drag] *:col-start-1 *:row-start-1">
           {/* invisible twin pins the width so Save and the checkmark swap in place */}
@@ -78,7 +109,7 @@ export function ConfigPage(): React.JSX.Element {
           </Button>
           <Button
             size="sm"
-            disabled={!dirty}
+            disabled={!active.dirty}
             onClick={() => void save()}
             className={cn(
               'w-full text-white',
@@ -94,47 +125,79 @@ export function ConfigPage(): React.JSX.Element {
         </div>
       </header>
 
+      {/* One panel that always matches the selected tab, like the skills
+          page: scroll-fade's scroll-driven animations never finish, and
+          base-ui only unmounts a deselected panel once the panel element's
+          animations complete — so panels carrying scroll-fade must not
+          deselect. */}
       <TabsContent
-        value="codex"
+        value={agent}
         className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pb-2"
       >
-        <FieldSet className="gap-0">
-          <FieldLegend>Model provider</FieldLegend>
-          <ProviderFields
-            provider={draft?.provider}
-            onChange={(provider) => draft && patch({ ...draft, provider })}
-          />
-        </FieldSet>
+        {agent === 'claude' ? (
+          <FieldSet className="gap-0">
+            <FieldLegend>Features</FieldLegend>
+            {CLAUDE_ENV_FIELDS.map((field) => (
+              <FeatureRow
+                key={field.key}
+                field={field}
+                enabled={claude.draft?.[field.key] ?? false}
+                disabled={!claude.draft}
+                onChange={(enabled) =>
+                  claude.draft && claude.patch({ ...claude.draft, [field.key]: enabled })
+                }
+              />
+            ))}
+          </FieldSet>
+        ) : (
+          <>
+            <FieldSet className="gap-0">
+              <FieldLegend>Model provider</FieldLegend>
+              <ProviderFields
+                provider={codex.draft?.provider}
+                onChange={(provider) => codex.draft && codex.patch({ ...codex.draft, provider })}
+              />
+            </FieldSet>
 
-        <FieldSet className="gap-0">
-          <FieldLegend>Agent defaults</FieldLegend>
-          {AGENT_FIELDS.map((field) => (
-            <AgentFieldRow
-              key={field.key}
-              field={field}
-              value={draft?.agent[field.key] ?? null}
-              disabled={!draft}
-              onChange={(value) =>
-                draft && patch({ ...draft, agent: { ...draft.agent, [field.key]: value } })
-              }
-            />
-          ))}
-        </FieldSet>
+            <FieldSet className="gap-0">
+              <FieldLegend>Agent defaults</FieldLegend>
+              {CODEX_AGENT_FIELDS.map((field) => (
+                <AgentFieldRow
+                  key={field.key}
+                  field={field}
+                  value={codex.draft?.agent[field.key] ?? null}
+                  disabled={!codex.draft}
+                  onChange={(value) =>
+                    codex.draft &&
+                    codex.patch({
+                      ...codex.draft,
+                      agent: { ...codex.draft.agent, [field.key]: value }
+                    })
+                  }
+                />
+              ))}
+            </FieldSet>
 
-        <FieldSet className="gap-0">
-          <FieldLegend>Features</FieldLegend>
-          {FEATURE_FIELDS.map((field) => (
-            <FeatureRow
-              key={field.key}
-              field={field}
-              enabled={draft?.features[field.key] ?? false}
-              disabled={!draft}
-              onChange={(enabled) =>
-                draft && patch({ ...draft, features: { ...draft.features, [field.key]: enabled } })
-              }
-            />
-          ))}
-        </FieldSet>
+            <FieldSet className="gap-0">
+              <FieldLegend>Features</FieldLegend>
+              {CODEX_FEATURE_FIELDS.map((field) => (
+                <FeatureRow
+                  key={field.key}
+                  field={field}
+                  enabled={codex.draft?.features[field.key] ?? false}
+                  disabled={!codex.draft}
+                  onChange={(enabled) =>
+                    codex.draft &&
+                    codex.patch({
+                      ...codex.draft,
+                      features: { ...codex.draft.features, [field.key]: enabled }
+                    })
+                  }
+                />
+              ))}
+            </FieldSet>
+          </>
+        )}
       </TabsContent>
     </Tabs>
   )
@@ -220,7 +283,7 @@ function AgentFieldRow({
   disabled,
   onChange
 }: {
-  field: (typeof AGENT_FIELDS)[number]
+  field: (typeof CODEX_AGENT_FIELDS)[number]
   value: string | null
   disabled: boolean
   onChange: (value: string) => void
@@ -259,7 +322,7 @@ function FeatureRow({
   disabled,
   onChange
 }: {
-  field: (typeof FEATURE_FIELDS)[number]
+  field: { label: string; description: string; note?: { recommended: string; reason: string } }
   enabled: boolean
   disabled: boolean
   onChange: (enabled: boolean) => void
@@ -269,17 +332,19 @@ function FeatureRow({
       title={
         <>
           {field.label}
-          <Tooltip>
-            <TooltipTrigger render={<span className="text-muted-foreground" />}>
-              <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipContent>
-              <span>
-                Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
-                {field.note.reason}
-              </span>
-            </TooltipContent>
-          </Tooltip>
+          {field.note && (
+            <Tooltip>
+              <TooltipTrigger render={<span className="text-muted-foreground" />}>
+                <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <span>
+                  Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
+                  {field.note.reason}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </>
       }
       description={field.description}

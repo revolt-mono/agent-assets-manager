@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { AgentId } from '../shared/agent'
 import type { RendererApi } from '../shared/api'
 
 const api: RendererApi = {
@@ -18,12 +19,13 @@ const api: RendererApi = {
     }
   },
   config: {
-    get: () => ipcRenderer.invoke('config:get'),
-    save: (values) => ipcRenderer.invoke('config:save', values),
+    get: (agent) => ipcRenderer.invoke('config:get', agent),
+    save: (agent, values) => ipcRenderer.invoke('config:save', agent, values),
     onChanged: (callback) => {
-      ipcRenderer.on('config:changed', callback)
+      const listener = (_event: Electron.IpcRendererEvent, agent: AgentId): void => callback(agent)
+      ipcRenderer.on('config:changed', listener)
       return () => {
-        ipcRenderer.removeListener('config:changed', callback)
+        ipcRenderer.removeListener('config:changed', listener)
       }
     }
   },

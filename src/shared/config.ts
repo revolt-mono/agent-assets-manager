@@ -1,4 +1,6 @@
-export const AGENT_FIELDS = [
+import type { AgentId } from './agent'
+
+export const CODEX_AGENT_FIELDS = [
   {
     key: 'model_reasoning_effort',
     label: 'Reasoning effort',
@@ -82,7 +84,7 @@ export const AGENT_FIELDS = [
   }
 ] as const
 
-export const FEATURE_FIELDS = [
+export const CODEX_FEATURE_FIELDS = [
   {
     key: 'apps',
     label: 'Apps',
@@ -123,8 +125,55 @@ export const FEATURE_FIELDS = [
   }
 ] as const
 
-export type AgentFieldKey = (typeof AGENT_FIELDS)[number]['key']
-export type FeatureKey = (typeof FEATURE_FIELDS)[number]['key']
+// Claude Code toggles map 1:1 to entries in the `env` object of
+// ~/.claude/settings.json; a truthy value (anything but "", "0", "false")
+// means on, an absent key means off. Turning on writes "1", off deletes.
+export const CLAUDE_ENV_FIELDS = [
+  {
+    key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+    label: 'Disable nonessential traffic',
+    description: 'Skip auto-updates, telemetry, error reporting, and other background requests.'
+  },
+  {
+    key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS',
+    label: 'Disable bundled skills',
+    description: 'Remove built-in skills and slash commands like /code-review and /run.'
+  },
+  {
+    key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL',
+    label: 'Disable Claude API skill',
+    description: 'Stop the bundled skill that auto-triggers on Anthropic SDK and API code.'
+  },
+  {
+    key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL',
+    label: 'Disable Claude Code skill',
+    description: 'Stop the bundled guide skill that answers Claude Code usage questions.'
+  },
+  {
+    key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS',
+    label: 'Disable git instructions',
+    description: 'Drop the built-in git workflow guidance from the system prompt.'
+  },
+  {
+    key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
+    label: 'Disable auto memory',
+    description: 'Stop reading and writing per-project memory notes across sessions.'
+  },
+  {
+    key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT',
+    label: 'Simple system prompt',
+    description: 'Collapse the system prompt to a minimal identity-and-cwd version.'
+  },
+  {
+    key: 'CLAUDE_CODE_NO_FLICKER',
+    label: 'No-flicker renderer',
+    description: 'Render the TUI on the alternate screen with mouse support and no flicker.'
+  }
+] as const
+
+type CodexAgentFieldKey = (typeof CODEX_AGENT_FIELDS)[number]['key']
+type CodexFeatureKey = (typeof CODEX_FEATURE_FIELDS)[number]['key']
+type ClaudeEnvKey = (typeof CLAUDE_ENV_FIELDS)[number]['key']
 
 export type ProviderValues = {
   enabled: boolean
@@ -132,14 +181,21 @@ export type ProviderValues = {
   apiKey: string
 }
 
-export type ConfigValues = {
-  agent: Record<AgentFieldKey, string | null>
-  features: Record<FeatureKey, boolean>
+export type ClaudeConfig = Record<ClaudeEnvKey, boolean>
+
+export type CodexConfig = {
+  agent: Record<CodexAgentFieldKey, string | null>
+  features: Record<CodexFeatureKey, boolean>
   provider: ProviderValues
 }
 
+export type AgentConfig = {
+  claude: ClaudeConfig
+  codex: CodexConfig
+}
+
 export type ConfigApi = {
-  get: () => Promise<ConfigValues>
-  save: (values: ConfigValues) => Promise<void>
-  onChanged: (callback: () => void) => () => void
+  get: <A extends AgentId>(agent: A) => Promise<AgentConfig[A]>
+  save: <A extends AgentId>(agent: A, values: AgentConfig[A]) => Promise<void>
+  onChanged: (callback: (agent: AgentId) => void) => () => void
 }
