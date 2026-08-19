@@ -31,8 +31,8 @@ mac:
   artifactName: ${name}-${version}-${arch}.${ext}
 forceCodeSigning: true
 npmRebuild: false
+# publish config only feeds latest-mac.yml generation; the workflow uploads with gh
 publish:
   provider: github
   owner: revolt-mono
   repo: agent-assets-manager
-  releaseType: draft

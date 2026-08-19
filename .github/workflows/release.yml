@@ -20,8 +20,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # the signing cert is self-signed; trust it so find-identity treats it as valid
       - run: sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain build/codesign-cert.pem
-      - run: pnpm build && pnpm exec electron-builder --mac --publish always
+      - run: pnpm build && pnpm exec electron-builder --mac --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # electron-builder's github publisher races itself and creates duplicate
+      # drafts when uploading assets in parallel, so upload with gh instead
+      - run: >
+          gh release create "$GITHUB_REF_NAME" --draft
+          --title "Volt ${GITHUB_REF_NAME#v}" --notes ""
+          dist/*-arm64.zip dist/*.blockmap dist/latest-mac.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
