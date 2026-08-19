@@ -10,7 +10,9 @@ import { debouncedBroadcast } from './broadcast'
 const SKILL_FILE = 'SKILL.md'
 const ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
 
-type Located = {
+// One skill folder read off disk: the listing entry plus everything the
+// per-skill IPC handlers need (paths and the parsed body).
+type LoadedSkill = {
   skill: Skill
   dir: string
   skillFile: string
@@ -75,21 +77,21 @@ async function listSkills(agent: AgentId): Promise<Skill[]> {
   const ids = entries
     .filter((entry) => entry.isDirectory() && ID_PATTERN.test(entry.name))
     .map((entry) => entry.name)
-  const located = await Promise.all(ids.map((id) => readSkill(agent, id)))
-  return located
+  const loaded = await Promise.all(ids.map((id) => readSkill(agent, id)))
+  return loaded
     .filter((item) => item !== null)
     .map((item) => item.skill)
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function requireSkill(agent: AgentId, id: string): Promise<Located> {
+async function requireSkill(agent: AgentId, id: string): Promise<LoadedSkill> {
   if (!ID_PATTERN.test(id)) throw new Error(`Invalid skill id: ${id}`)
-  const located = await readSkill(agent, id)
-  if (!located) throw new Error(`Skill not found: ${id}`)
-  return located
+  const loaded = await readSkill(agent, id)
+  if (!loaded) throw new Error(`Skill not found: ${id}`)
+  return loaded
 }
 
-async function readSkill(agent: AgentId, id: string): Promise<Located | null> {
+async function readSkill(agent: AgentId, id: string): Promise<LoadedSkill | null> {
   const dir = join(skillsRoot(agent), id)
   const skillFile = join(dir, SKILL_FILE)
   const raw = await readFile(skillFile, 'utf8').catch(() => null)
