@@ -47,6 +47,10 @@ function createWindow(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
 
+  // Packaged builds get the icon from icon.icns; dev runs the stock
+  // Electron binary, so set the dock icon manually.
+  if (is.dev && process.platform === 'darwin') app.dock?.setIcon(icon)
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
