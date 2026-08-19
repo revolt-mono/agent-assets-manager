@@ -109,7 +109,7 @@ export function ConfigPage(): React.JSX.Element {
               className={cn(
                 'w-full text-white',
                 showSaved
-                  ? 'bg-[#008009] disabled:opacity-100'
+                  ? 'bg-[#35C759] disabled:opacity-100'
                   : 'bg-[#007aff] hover:bg-[#007aff]/80'
               )}
             >
