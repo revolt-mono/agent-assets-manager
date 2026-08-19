@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { parse } from 'smol-toml'
 import {
+  assertProviderDraft,
   CODEX_AGENT_FIELDS,
   CODEX_FEATURE_FIELDS,
   type CodexConfig,
@@ -45,14 +46,9 @@ export async function saveCodexConfig(next: CodexConfig): Promise<void> {
   }
   const provider = next.provider
   if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
-    if (provider.enabled !== true && provider.enabled !== false) {
-      throw new Error(`Unsupported provider enabled value: ${provider.enabled}`)
-    }
+    assertProviderDraft(provider)
     if (/[\r\n"\\]/.test(provider.baseUrl + provider.apiKey)) {
       throw new Error('Unsupported characters in provider values')
-    }
-    if (provider.enabled && (provider.baseUrl === '' || provider.apiKey === '')) {
-      throw new Error('Enabled provider needs a base URL and an API key')
     }
     rewriteProvider(doc, provider)
     // Codex compresses request bodies by default, which third-party endpoints

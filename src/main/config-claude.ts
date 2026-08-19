@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import {
+  assertProviderDraft,
   CLAUDE_AGENT_FIELDS,
   CLAUDE_FEATURE_FIELDS,
   type ClaudeAgentSettingKey,
@@ -59,6 +60,20 @@ export async function saveClaudeConfig(next: ClaudeConfig): Promise<void> {
     else settings[field.key] = enabled
     changed = true
   }
+  // These env entries are Claude Code's whole provider switch, so enabling
+  // writes both and disabling deletes both.
+  const provider = next.provider
+  if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
+    assertProviderDraft(provider)
+    if (provider.enabled) {
+      env.ANTHROPIC_BASE_URL = provider.baseUrl
+      env.ANTHROPIC_AUTH_TOKEN = provider.apiKey
+    } else {
+      delete env.ANTHROPIC_BASE_URL
+      delete env.ANTHROPIC_AUTH_TOKEN
+    }
+    changed = true
+  }
   if (!changed) return
   if (Object.keys(env).length > 0) settings.env = env
   else delete settings.env
@@ -108,11 +123,17 @@ async function loadSettings(): Promise<ClaudeSettings> {
       if (field.storage !== 'env' || env[field.key] === undefined) continue
       env[field.key] = String(env[field.key])
     }
+    for (const key of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'] as const) {
+      if (env[key] !== undefined) env[key] = String(env[key])
+    }
   }
   return settings
 }
 
 function toConfig(settings: ClaudeSettings): ClaudeConfig {
+  // Claude Code reads the provider entries like `process.env.X || fallback`,
+  // so an empty-string value behaves as unset.
+  const { ANTHROPIC_BASE_URL: baseUrl = '', ANTHROPIC_AUTH_TOKEN: apiKey = '' } = settings.env ?? {}
   // Claude Code accepts values like "true" beside "1" (and reads some flags
   // by mere presence), so anything but an explicit off value counts as on.
   const enabled = (value: string | undefined): boolean => {
@@ -134,6 +155,7 @@ function toConfig(settings: ClaudeSettings): ClaudeConfig {
           ? enabled(settings.env?.[field.key])
           : (settings[field.key] ?? field.default)
       ])
-    ) as ClaudeConfig['features']
+    ) as ClaudeConfig['features'],
+    provider: { enabled: baseUrl !== '' && apiKey !== '', baseUrl, apiKey }
   }
 }

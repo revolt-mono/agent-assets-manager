@@ -356,9 +356,27 @@ export type ProviderValues = {
   apiKey: string
 }
 
+// Narrows an untrusted IPC provider draft down to the declared type plus the
+// cross-agent rule that an enabled provider carries both credentials.
+export function assertProviderDraft(provider: ProviderValues): void {
+  if (provider.enabled !== true && provider.enabled !== false) {
+    throw new Error(`Unsupported provider enabled value: ${provider.enabled}`)
+  }
+  if (
+    String(provider.baseUrl) !== provider.baseUrl ||
+    String(provider.apiKey) !== provider.apiKey
+  ) {
+    throw new Error('Unsupported provider value type')
+  }
+  if (provider.enabled && (provider.baseUrl === '' || provider.apiKey === '')) {
+    throw new Error('Enabled provider needs a base URL and an API key')
+  }
+}
+
 export type ClaudeConfig = {
   agent: Record<ClaudeAgentField['key'], string | null>
   features: Record<ClaudeFeatureField['key'], boolean>
+  provider: ProviderValues
 }
 
 export type CodexConfig = {

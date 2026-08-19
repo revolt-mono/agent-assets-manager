@@ -39,6 +39,7 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
   expect(config.features.CLAUDE_CODE_NO_FLICKER).toBe(true) // "true" counts as on, not just "1"
 
   await api.saveClaudeConfig({
+    provider: config.provider,
     agent: {
       ...config.agent,
       model: 'opus',
@@ -117,6 +118,38 @@ test('an empty env object is dropped from the file', async () => {
     features: { ...config.features, CLAUDE_CODE_NO_FLICKER: false }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
+})
+
+test('provider env keys round-trip and disabling deletes them', async () => {
+  await writeFile(file, JSON.stringify({ env: { MY_VAR: 'keep' } }))
+  const config = await api.loadClaudeConfig()
+  expect(config.provider).toEqual({ enabled: false, baseUrl: '', apiKey: '' })
+
+  await expect(
+    api.saveClaudeConfig({
+      ...config,
+      provider: { enabled: true, baseUrl: 'https://proxy.example.com', apiKey: '' }
+    })
+  ).rejects.toThrow('Enabled provider needs a base URL and an API key')
+
+  await api.saveClaudeConfig({
+    ...config,
+    provider: { enabled: true, baseUrl: 'https://proxy.example.com', apiKey: 'sk-test' }
+  })
+  expect(JSON.parse(await readFile(file, 'utf8')).env).toEqual({
+    MY_VAR: 'keep',
+    ANTHROPIC_BASE_URL: 'https://proxy.example.com',
+    ANTHROPIC_AUTH_TOKEN: 'sk-test'
+  })
+  const enabled = await api.loadClaudeConfig()
+  expect(enabled.provider).toEqual({
+    enabled: true,
+    baseUrl: 'https://proxy.example.com',
+    apiKey: 'sk-test'
+  })
+
+  await api.saveClaudeConfig({ ...enabled, provider: { ...enabled.provider, enabled: false } })
+  expect(JSON.parse(await readFile(file, 'utf8')).env).toEqual({ MY_VAR: 'keep' })
 })
 
 test('a mis-shaped file rejects load and save before any write', async () => {

@@ -151,6 +151,16 @@ function ClaudeFields({ editor }: { editor: ConfigEditor<'claude'> }): React.JSX
   return (
     <>
       <FieldSet className="gap-0">
+        <FieldLegend>Model provider</FieldLegend>
+        <ProviderFields
+          provider={draft?.provider}
+          baseUrlDescription="Endpoint speaking the Anthropic Messages API."
+          apiKeyDescription="Sent to the configured endpoint; stored in settings.json."
+          onChange={(provider) => patch((current) => ({ ...current, provider }))}
+        />
+      </FieldSet>
+
+      <FieldSet className="gap-0">
         <FieldLegend>Agent defaults</FieldLegend>
         {CLAUDE_AGENT_FIELDS.map((field) => (
           <AgentFieldRow
@@ -200,6 +210,8 @@ function CodexFields({ editor }: { editor: ConfigEditor<'codex'> }): React.JSX.E
         <FieldLegend>Model provider</FieldLegend>
         <ProviderFields
           provider={draft?.provider}
+          baseUrlDescription="Endpoint speaking the OpenAI Responses API."
+          apiKeyDescription="Sent to the configured endpoint; stored in config.toml."
           onChange={(provider) => patch((current) => ({ ...current, provider }))}
         />
       </FieldSet>
@@ -262,9 +274,13 @@ function ConfigRow({
 
 function ProviderFields({
   provider,
+  baseUrlDescription,
+  apiKeyDescription,
   onChange
 }: {
   provider: ProviderValues | undefined
+  baseUrlDescription: string
+  apiKeyDescription: string
   onChange: (provider: ProviderValues) => void
 }): React.JSX.Element {
   // Credentials gate the switch: clearing either field turns the provider off,
@@ -289,7 +305,7 @@ function ProviderFields({
           onToggle={() => set({ enabled: !provider?.enabled })}
         />
       </ConfigRow>
-      <ConfigRow title="Base URL" description="Endpoint speaking the OpenAI Responses API.">
+      <ConfigRow title="Base URL" description={baseUrlDescription}>
         <Input
           value={provider?.baseUrl ?? ''}
           disabled={!provider}
@@ -299,7 +315,7 @@ function ProviderFields({
           onChange={(event) => set({ baseUrl: event.target.value.trim() })}
         />
       </ConfigRow>
-      <ConfigRow title="API key" description="Sent as a bearer token; stored in config.toml.">
+      <ConfigRow title="API key" description={apiKeyDescription}>
         <Input
           type="password"
           value={provider?.apiKey ?? ''}
