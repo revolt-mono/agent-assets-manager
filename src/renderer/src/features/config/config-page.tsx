@@ -29,6 +29,7 @@ import { cn } from '@renderer/lib/utils'
 import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
 import { AGENT_IDS, parseAgent, type AgentId } from '@shared/agent'
 import {
+  CLAUDE_AGENT_FIELDS,
   CLAUDE_FEATURE_FIELDS,
   CODEX_AGENT_FIELDS,
   CODEX_FEATURE_FIELDS,
@@ -141,19 +142,53 @@ export function ConfigPage(): React.JSX.Element {
 
 function ClaudeFields({ editor }: { editor: ConfigEditor<'claude'> }): React.JSX.Element {
   const { draft, patch } = editor
+  const saved = useSavedConfig('claude')
+  // Haiku models take no effort levels (code.claude.com/docs/en/model-config),
+  // so the effort select grays out while haiku is the drafted model. Picking
+  // haiku reverts any drafted effort change so the inert select never saves a
+  // new value; a previously stored effortLevel key stays untouched.
+  const effortInert = draft?.agent.model === 'haiku'
   return (
-    <FieldSet className="gap-0">
-      <FieldLegend>Features</FieldLegend>
-      {CLAUDE_FEATURE_FIELDS.map((field) => (
-        <FeatureRow
-          key={field.key}
-          field={field}
-          enabled={draft?.[field.key] ?? false}
-          disabled={!draft}
-          onChange={(enabled) => patch((current) => ({ ...current, [field.key]: enabled }))}
-        />
-      ))}
-    </FieldSet>
+    <>
+      <FieldSet className="gap-0">
+        <FieldLegend>Agent defaults</FieldLegend>
+        {CLAUDE_AGENT_FIELDS.map((field) => (
+          <AgentFieldRow
+            key={field.key}
+            field={field}
+            value={draft?.agent[field.key] ?? null}
+            disabled={!draft || (field.key === 'effortLevel' && effortInert)}
+            onChange={(value) =>
+              patch((current) => {
+                const agent = { ...current.agent, [field.key]: value }
+                if (field.key === 'model' && value === 'haiku') {
+                  agent.effortLevel = saved?.agent.effortLevel ?? null
+                }
+                return { ...current, agent }
+              })
+            }
+          />
+        ))}
+      </FieldSet>
+
+      <FieldSet className="gap-0">
+        <FieldLegend>Features</FieldLegend>
+        {CLAUDE_FEATURE_FIELDS.map((field) => (
+          <FeatureRow
+            key={field.key}
+            field={field}
+            enabled={draft?.features[field.key] ?? false}
+            disabled={!draft}
+            onChange={(enabled) =>
+              patch((current) => ({
+                ...current,
+                features: { ...current.features, [field.key]: enabled }
+              }))
+            }
+          />
+        ))}
+      </FieldSet>
+    </>
   )
 }
 
@@ -285,7 +320,11 @@ function AgentFieldRow({
   disabled,
   onChange
 }: {
-  field: (typeof CODEX_AGENT_FIELDS)[number]
+  field: {
+    label: string
+    description: string
+    options: readonly { value: string; label: string; description: string }[]
+  }
   value: string | null
   disabled: boolean
   onChange: (value: string) => void

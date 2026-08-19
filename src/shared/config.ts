@@ -125,6 +125,65 @@ export const CODEX_FEATURE_FIELDS = [
   }
 ] as const
 
+// Claude Code agent defaults, persisted in ~/.claude/settings.json.
+// `settings` storage is a top-level string key, `env` storage an entry in the
+// `env` object; either way, absent or an unlisted value shows as "Not set".
+export const CLAUDE_AGENT_FIELDS = [
+  {
+    key: 'model',
+    storage: 'settings',
+    label: 'Model',
+    description: 'Default model for new sessions.',
+    options: [
+      { value: 'haiku', label: 'Haiku', description: 'Fast and efficient for simple tasks' },
+      { value: 'sonnet', label: 'Sonnet', description: 'Balanced speed and capability' },
+      { value: 'opus', label: 'Opus', description: 'Deep reasoning for complex work' },
+      { value: 'fable', label: 'Fable', description: 'Most capable Mythos-class tier' }
+    ]
+  },
+  {
+    key: 'effortLevel',
+    storage: 'settings',
+    label: 'Effort level',
+    description: 'How much adaptive reasoning the model applies to each step.',
+    options: [
+      { value: 'low', label: 'Low', description: 'Fastest for short, latency-sensitive tasks' },
+      {
+        value: 'medium',
+        label: 'Medium',
+        description: 'Reduced token usage for cost-sensitive work'
+      },
+      {
+        value: 'high',
+        label: 'High',
+        description: 'Balanced token usage and intelligence; the default'
+      },
+      {
+        value: 'xhigh',
+        label: 'Extra high',
+        description: 'Deeper reasoning at higher token spend'
+      },
+      { value: 'max', label: 'Max', description: 'Deepest reasoning, prone to overthinking' }
+    ]
+  },
+  {
+    key: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    storage: 'env',
+    label: 'Small model',
+    description: 'Model the haiku alias resolves to for fast, simple tasks.',
+    options: [
+      {
+        value: 'claude-haiku-4-5',
+        label: 'Haiku',
+        description: 'Fast and efficient for simple tasks'
+      },
+      { value: 'claude-sonnet-5', label: 'Sonnet', description: 'Balanced speed and capability' },
+      { value: 'claude-opus-5', label: 'Opus', description: 'Deep reasoning for complex work' },
+      { value: 'claude-fable-5', label: 'Fable', description: 'Most capable Mythos-class tier' }
+    ]
+  }
+] as const
+
 // Claude Code feature toggles, all persisted in ~/.claude/settings.json.
 // `settings` storage is a top-level boolean key: absent means the field
 // default, and saving the default deletes the key. `env` storage is an entry
@@ -286,8 +345,10 @@ export const CLAUDE_FEATURE_FIELDS = [
 
 type CodexAgentFieldKey = (typeof CODEX_AGENT_FIELDS)[number]['key']
 type CodexFeatureKey = (typeof CODEX_FEATURE_FIELDS)[number]['key']
+type ClaudeAgentField = (typeof CLAUDE_AGENT_FIELDS)[number]
 type ClaudeFeatureField = (typeof CLAUDE_FEATURE_FIELDS)[number]
-export type ClaudeSettingKey = Extract<ClaudeFeatureField, { storage: 'settings' }>['key']
+export type ClaudeAgentSettingKey = Extract<ClaudeAgentField, { storage: 'settings' }>['key']
+export type ClaudeFeatureSettingKey = Extract<ClaudeFeatureField, { storage: 'settings' }>['key']
 
 export type ProviderValues = {
   enabled: boolean
@@ -295,7 +356,10 @@ export type ProviderValues = {
   apiKey: string
 }
 
-export type ClaudeConfig = Record<ClaudeFeatureField['key'], boolean>
+export type ClaudeConfig = {
+  agent: Record<ClaudeAgentField['key'], string | null>
+  features: Record<ClaudeFeatureField['key'], boolean>
+}
 
 export type CodexConfig = {
   agent: Record<CodexAgentFieldKey, string | null>
