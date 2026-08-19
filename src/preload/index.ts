@@ -31,6 +31,18 @@ const api: RendererApi = {
   },
   usage: {
     get: (fresh) => ipcRenderer.invoke('usage:get', fresh)
+  },
+  update: {
+    get: () => ipcRenderer.invoke('update:get'),
+    onReady: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, version: string): void =>
+        callback(version)
+      ipcRenderer.on('update:ready', listener)
+      return () => {
+        ipcRenderer.removeListener('update:ready', listener)
+      }
+    },
+    install: () => ipcRenderer.send('update:install')
   }
 }
 

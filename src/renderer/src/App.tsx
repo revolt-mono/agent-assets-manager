@@ -4,9 +4,11 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ConfigPage } from '@renderer/features/config/config-page'
 import { SkillsPage } from '@renderer/features/skills/skills-page'
 import { UsagePage } from '@renderer/features/usage/usage-page'
+import { UpdateButton } from '@renderer/components/update-button'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarInset,
@@ -49,6 +51,9 @@ function App(): React.JSX.Element {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarFooter>
+          <UpdateButton />
+        </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-h-0 overflow-hidden">
         {PAGES.map((item) => (

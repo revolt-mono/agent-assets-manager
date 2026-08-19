@@ -33,7 +33,8 @@ mac:
   artifactName: ${name}-${version}-${arch}.${ext}
 forceCodeSigning: true
 npmRebuild: false
-# publish config only feeds latest-mac.yml generation; the workflow uploads with gh
+# publish config feeds latest-mac.yml and the packaged app-update.yml that
+# electron-updater reads; the workflow uploads release assets with gh
 publish:
   provider: github
   owner: revolt-mono

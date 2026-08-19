@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerConfig } from './config'
 import { registerSkills } from './skills'
+import { registerUpdater } from './updater'
 import { registerUsage } from './usage'
 
 function createWindow(): void {
@@ -93,6 +94,7 @@ app.whenReady().then(() => {
   const stopSkills = registerSkills()
   const stopConfig = registerConfig()
   registerUsage()
+  registerUpdater()
   app.on('will-quit', () => {
     stopSkills()
     stopConfig()

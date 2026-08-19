@@ -1,5 +1,6 @@
 import type { ConfigApi } from './config'
 import type { SkillsApi } from './skill'
+import type { UpdateApi } from './update'
 import type { UsageApi } from './usage'
 
 export type RendererApi = {
@@ -7,4 +8,5 @@ export type RendererApi = {
   skills: SkillsApi
   config: ConfigApi
   usage: UsageApi
+  update: UpdateApi
 }
