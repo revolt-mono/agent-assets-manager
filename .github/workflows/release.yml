@@ -18,6 +18,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # the signing cert is self-signed; trust it so find-identity treats it as valid
+      - run: sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain build/codesign-cert.pem
       - run: pnpm build && pnpm exec electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
