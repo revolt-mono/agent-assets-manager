@@ -80,6 +80,9 @@ async function sweepLogs(
   cache: ReadonlyMap<string, CachedFile>
 ): Promise<{ events: UsageEvent[]; cache: Map<string, CachedFile> }> {
   const next = new Map<string, CachedFile>()
+  // The widest UI range is 30 calendar days; one extra day covers timezone
+  // and daylight-saving boundaries before the renderer filters timestamps.
+  const oldestFileMtime = Date.now() - 31 * 24 * 60 * 60 * 1000
   const lists = await Promise.all(
     LOG_SOURCES.map(async (source) => {
       const files = await filesUnder(source.root, source.match)
@@ -90,6 +93,7 @@ async function sweepLogs(
           files.slice(start, start + 32).map(async (file): Promise<[string, CachedFile] | null> => {
             const info = await stat(file).catch(() => null)
             if (!info) return null
+            if (info.mtimeMs < oldestFileMtime) return null
             const hit = cache.get(file)
             if (hit && hit.mtimeMs === info.mtimeMs && hit.size === info.size) return [file, hit]
             try {

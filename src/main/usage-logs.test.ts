@@ -19,7 +19,7 @@ async function writeLog(name: string, lines: string[]): Promise<string> {
 }
 
 function claudeLine(overrides: {
-  requestId?: string | undefined
+  requestId?: string | number | undefined
   model?: string
   timestamp?: string
   usage?: {
@@ -83,7 +83,16 @@ test('claude log: malformed or incomplete lines are dropped, not fatal', async (
     JSON.stringify({ type: 'user', message: { content: 'ask the assistant' } }),
     claudeLine({ model: '<synthetic>' }),
     claudeLine({ requestId: undefined }),
+    claudeLine({ requestId: 123 }),
     claudeLine({ timestamp: 'not-a-date' }),
+    claudeLine({
+      usage: {
+        input_tokens: 1.5,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0
+      }
+    }),
     claudeLine({
       usage: {
         input_tokens: 100,
@@ -95,6 +104,16 @@ test('claude log: malformed or incomplete lines are dropped, not fatal', async (
     claudeLine({})
   ])
   const events = await claudeSource.parse(file)
+  expect(events).toHaveLength(1)
+  expect(events[0].input).toBe(100)
+})
+
+test('claude log: parses a final line without a newline', async () => {
+  const file = join(dir, 'unterminated.jsonl')
+  await writeFile(file, claudeLine({}))
+
+  const events = await claudeSource.parse(file)
+
   expect(events).toHaveLength(1)
   expect(events[0].input).toBe(100)
 })
@@ -121,6 +140,21 @@ function tokenCount(timestamp: string, total: CodexUsage, last: CodexUsage): str
 test('codex log: model comes from session meta, repeats of the same total are dropped', async () => {
   const file = await writeLog('rollout-1.jsonl', [
     JSON.stringify({ type: 'session_meta', payload: { type: 'session_meta', model: 'gpt-5.5' } }),
+    JSON.stringify({
+      type: 'event_msg',
+      timestamp: '2026-08-19T09:59:00Z',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: {},
+          last_token_usage: {
+            input_tokens: 100,
+            cached_input_tokens: 80,
+            output_tokens: 2
+          }
+        }
+      }
+    }),
     tokenCount(
       '2026-08-19T10:00:00Z',
       { input: 1000, cached: 800, output: 20, write: 40 },

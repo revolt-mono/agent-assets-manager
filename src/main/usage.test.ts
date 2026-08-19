@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, writeFile } from 'fs/promises'
+import { appendFile, mkdir, mkdtemp, utimes, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
@@ -52,6 +52,13 @@ beforeAll(async () => {
   )
   // a resumed session copies history into a second file: same request twice
   await writeFile(join(projects, 'two.jsonl'), first + '\n')
+  const staleLog = join(projects, 'stale.jsonl')
+  await writeFile(
+    staleLog,
+    claudeLine('stale', 'claude-opus-5', '2026-01-02T04:00:00Z', { input: 1_000_000 }) + '\n'
+  )
+  const staleTime = new Date(Date.now() - 32 * 24 * 60 * 60 * 1000)
+  await utimes(staleLog, staleTime, staleTime)
 
   const sessions = join(home, '.codex', 'sessions')
   await mkdir(sessions, { recursive: true })
@@ -74,9 +81,9 @@ beforeAll(async () => {
 
 const HOUR = Date.parse('2026-01-02T03:00:00Z')
 
-test('report dedupes resumed sessions, resolves aliases, prices per hour bucket', async () => {
+test('report skips stale logs, dedupes resumed sessions, resolves aliases, and prices buckets', async () => {
   const buckets: UsageBucket[] = await invokeIpc('usage:get', false)
-  expect(buckets).toHaveLength(2) // unknown model excluded, duplicate request collapsed
+  expect(buckets).toHaveLength(2) // stale and unknown logs excluded, duplicate request collapsed
 
   const claude = buckets.find((bucket) => bucket.agent === 'claude')!
   expect(claude).toMatchObject({ hour: HOUR, model: 'claude-opus-5' })
