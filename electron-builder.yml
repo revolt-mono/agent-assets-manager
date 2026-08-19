@@ -23,6 +23,9 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  # hardened runtime enforces team-id library validation, which a teamless
+  # self-signed cert can never satisfy; we don't notarize, so turn it off
+  hardenedRuntime: false
   # long-lived self-signed cert; not an apple identity, so it must be named explicitly
   identity: Local Development Code Signing
   artifactName: ${name}-${version}-${arch}.${ext}
