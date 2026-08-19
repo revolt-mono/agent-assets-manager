@@ -35,4 +35,4 @@ publish:
   provider: github
   owner: revolt-mono
   repo: agent-assets-manager
-  releaseType: release
+  releaseType: draft
