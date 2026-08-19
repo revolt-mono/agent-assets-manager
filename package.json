@@ -1,5 +1,6 @@
 {
   "name": "volt",
+  "productName": "Volt",
   "version": "0.0.1",
   "description": "Manager for coding agent configs, skills, and usage",
   "main": "./out/main/index.js",

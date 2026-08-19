@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
+import { app, shell, BrowserWindow, Menu, type BrowserWindowConstructorOptions } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -46,6 +46,41 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
+
+  // dev keeps electron's default menu (devtools, reload); prod gets a
+  // trimmed menu without Services and the View menu's developer items,
+  // keeping fileMenu (Cmd+W) and the View zoom/fullscreen roles
+  if (!is.dev) {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: app.name,
+          submenu: [
+            { role: 'about' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' }
+          ]
+        },
+        { role: 'fileMenu' },
+        { role: 'editMenu' },
+        {
+          label: 'View',
+          submenu: [
+            { role: 'resetZoom' },
+            { role: 'zoomIn' },
+            { role: 'zoomOut' },
+            { type: 'separator' },
+            { role: 'togglefullscreen' }
+          ]
+        },
+        { role: 'windowMenu' }
+      ])
+    )
+  }
 
   // Packaged builds get the icon from icon.icns; dev runs the stock
   // Electron binary, so set the dock icon manually.
