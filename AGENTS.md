@@ -12,19 +12,14 @@
 ```
 src/
 ├── main               electron main process: ipc handlers plus file watchers
-│   ├── config*.ts     agent config io: ipc boundary, claude settings.json, codex
-│   │                  config.toml, comment-preserving toml line editor
+│   ├── config*.ts     agent config io: ipc boundary, claude settings.json, codex config.toml, comment-preserving toml line editor
 │   ├── skills.ts      skill folders: listing, frontmatter, uninstall/open/reveal
-│   └── usage*.ts      usage-logs parses session jsonl into events; usage prices,
-│                      caches per file, and buckets them for the renderer
+│   └── usage*.ts      usage-logs parses session jsonl into events; usage prices, caches per file, and buckets them for the renderer
 ├── preload            contextBridge exposing the typed RendererApi over ipc
-├── shared             ipc contracts: agent ids, config field catalogs, skill and
-│                      usage types
+├── shared             ipc contracts: agent ids, config field catalogs, skill and usage types
 └── renderer/src
-    ├── features       one vertical slice per page (config, skills, usage), each
-    │                  a page component plus an ipc-backed store
-    ├── components     app chrome (PageHeader, AgentTabsList, logos, IconSwap);
-    │                  ui/ is vendored shadcn
+    ├── features       one vertical slice per page (config, skills, usage), each a page component plus an ipc-backed store
+    ├── components     app chrome (PageHeader, AgentTabsList, logos, IconSwap); ui/ is vendored shadcn
     ├── lib            store primitive, size ladder, motion springs, cn
     └── hooks          shared react hooks
 tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
