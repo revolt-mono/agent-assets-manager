@@ -1,4 +1,4 @@
-import { NodeFileSystem } from '@effect/platform-node'
+import * as NodeFileSystem from '@effect/platform-node/NodeFileSystem'
 import { Effect, ManagedRuntime, type PlatformError } from 'effect'
 
 // One shared runtime bridges Effect programs to electron's promise-based ipc
