@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'fs'
 import { basename, dirname } from 'path'
 import { ipcMain } from 'electron'
 import { AGENT_IDS, parseAgent, type AgentId } from '../shared/agent'
-import type { ClaudeConfig, CodexConfig } from '../shared/config'
+import type { AgentConfigValues } from '../shared/config'
 import { debouncedBroadcast } from './broadcast'
 import { CLAUDE_FILE, loadClaudeConfig, saveClaudeConfig } from './config-claude'
 import { CODEX_FILE, loadCodexConfig, saveCodexConfig } from './config-codex'
@@ -50,25 +50,19 @@ export function registerConfig(): () => void {
   }
 
   ipcMain.handle('config:get', async (_event, agent: string) => {
-    const values = await serialize<ClaudeConfig | CodexConfig>(
+    const values = await serialize<AgentConfigValues>(
       parseAgent(agent) === 'claude' ? loadClaudeConfig : loadCodexConfig
     )
     ensureWatch()
     return values
   })
-  ipcMain.handle(
-    'config:save',
-    async (_event, agent: string, values: ClaudeConfig | CodexConfig) => {
-      // SAFETY: the payload is untrusted, but each writer re-validates every
-      // field before touching disk; the cast only selects the expected shape.
-      await serialize(() =>
-        parseAgent(agent) === 'claude'
-          ? saveClaudeConfig(values as ClaudeConfig)
-          : saveCodexConfig(values as CodexConfig)
-      )
-      ensureWatch()
-    }
-  )
+  ipcMain.handle('config:save', async (_event, agent: string, values) => {
+    // each writer parses the untrusted payload before touching disk
+    await serialize(() =>
+      parseAgent(agent) === 'claude' ? saveClaudeConfig(values) : saveCodexConfig(values)
+    )
+    ensureWatch()
+  })
 
   ensureWatch()
 

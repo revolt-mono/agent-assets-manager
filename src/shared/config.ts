@@ -343,55 +343,23 @@ export const CLAUDE_FEATURE_FIELDS = [
   }
 ] as const
 
-type CodexAgentFieldKey = (typeof CODEX_AGENT_FIELDS)[number]['key']
-type CodexFeatureKey = (typeof CODEX_FEATURE_FIELDS)[number]['key']
-type ClaudeAgentField = (typeof CLAUDE_AGENT_FIELDS)[number]
-type ClaudeFeatureField = (typeof CLAUDE_FEATURE_FIELDS)[number]
-export type ClaudeAgentSettingKey = Extract<ClaudeAgentField, { storage: 'settings' }>['key']
-export type ClaudeFeatureSettingKey = Extract<ClaudeFeatureField, { storage: 'settings' }>['key']
-
 export type ProviderValues = {
   enabled: boolean
   baseUrl: string
   apiKey: string
 }
 
-// Narrows an untrusted IPC provider draft down to the declared type plus the
-// cross-agent rule that an enabled provider carries both credentials.
-export function assertProviderDraft(provider: ProviderValues): void {
-  if (provider.enabled !== true && provider.enabled !== false) {
-    throw new Error(`Unsupported provider enabled value: ${provider.enabled}`)
-  }
-  if (
-    String(provider.baseUrl) !== provider.baseUrl ||
-    String(provider.apiKey) !== provider.apiKey
-  ) {
-    throw new Error('Unsupported provider value type')
-  }
-  if (provider.enabled && (provider.baseUrl === '' || provider.apiKey === '')) {
-    throw new Error('Enabled provider needs a base URL and an API key')
-  }
-}
-
-export type ClaudeConfig = {
-  agent: Record<ClaudeAgentField['key'], string | null>
-  features: Record<ClaudeFeatureField['key'], boolean>
+// One agent's managed values as they cross IPC, keyed by the catalogs above.
+// The renderer renders whatever the catalogs describe; main parses a draft
+// against its own catalog before trusting it.
+export type AgentConfigValues = {
+  agent: Record<string, string | null>
+  features: Record<string, boolean>
   provider: ProviderValues
-}
-
-export type CodexConfig = {
-  agent: Record<CodexAgentFieldKey, string | null>
-  features: Record<CodexFeatureKey, boolean>
-  provider: ProviderValues
-}
-
-export type AgentConfig = {
-  claude: ClaudeConfig
-  codex: CodexConfig
 }
 
 export type ConfigApi = {
-  get: <A extends AgentId>(agent: A) => Promise<AgentConfig[A]>
-  save: <A extends AgentId>(agent: A, values: AgentConfig[A]) => Promise<void>
+  get: (agent: AgentId) => Promise<AgentConfigValues>
+  save: (agent: AgentId, values: AgentConfigValues) => Promise<void>
   onChanged: (callback: (agent: AgentId) => void) => () => void
 }

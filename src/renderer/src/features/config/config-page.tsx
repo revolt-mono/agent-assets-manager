@@ -33,25 +33,68 @@ import {
   CLAUDE_FEATURE_FIELDS,
   CODEX_AGENT_FIELDS,
   CODEX_FEATURE_FIELDS,
-  type AgentConfig,
+  type AgentConfigValues,
   type ProviderValues
 } from '@shared/config'
+
+type AgentFieldDef = {
+  key: string
+  label: string
+  description: string
+  options: readonly { value: string; label: string; description: string }[]
+}
+
+type FeatureFieldDef = {
+  key: string
+  label: string
+  description: string
+  note?: { recommended: string; reason: string }
+}
+
+// Everything the page renders per agent: the shared field catalogs plus the
+// per-agent provider copy.
+const CATALOGS = {
+  claude: {
+    agentFields: CLAUDE_AGENT_FIELDS,
+    featureFields: CLAUDE_FEATURE_FIELDS,
+    baseUrlDescription: 'Endpoint speaking the Anthropic Messages API.',
+    apiKeyDescription: 'Sent to the configured endpoint; stored in settings.json.'
+  },
+  codex: {
+    agentFields: CODEX_AGENT_FIELDS,
+    featureFields: CODEX_FEATURE_FIELDS,
+    baseUrlDescription: 'Endpoint speaking the OpenAI Responses API.',
+    apiKeyDescription: 'Sent to the configured endpoint; stored in config.toml.'
+  }
+} satisfies Record<
+  AgentId,
+  {
+    agentFields: readonly AgentFieldDef[]
+    featureFields: readonly FeatureFieldDef[]
+    baseUrlDescription: string
+    apiKeyDescription: string
+  }
+>
 
 // One agent's edit session: the draft overlays the saved snapshot it was
 // based on and survives tab switches; a newer snapshot (external file change,
 // or our own save landing) discards it.
-type ConfigEditor<A extends AgentId> = {
-  draft: AgentConfig[A] | undefined
+type ConfigEditor = {
+  saved: AgentConfigValues | undefined
+  draft: AgentConfigValues | undefined
   dirty: boolean
-  patch: (update: (draft: AgentConfig[A]) => AgentConfig[A]) => void
+  patch: (update: (draft: AgentConfigValues) => AgentConfigValues) => void
   save: () => Promise<void>
 }
 
-function useConfigEditor<A extends AgentId>(agent: A): ConfigEditor<A> {
+function useConfigEditor(agent: AgentId): ConfigEditor {
   const saved = useSavedConfig(agent)
-  const [edit, setEdit] = useState<{ base: AgentConfig[A]; draft: AgentConfig[A] } | null>(null)
+  const [edit, setEdit] = useState<{ base: AgentConfigValues; draft: AgentConfigValues } | null>(
+    null
+  )
   const draft = edit && edit.base === saved ? edit.draft : saved
   return {
+    saved,
     draft,
     dirty: draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved),
     patch: (update) => {
@@ -134,47 +177,56 @@ export function ConfigPage(): React.JSX.Element {
         value={agent}
         className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pb-2"
       >
-        {agent === 'claude' ? <ClaudeFields editor={claude} /> : <CodexFields editor={codex} />}
+        <AgentSections agent={agent} editor={active} />
       </TabsContent>
     </Tabs>
   )
 }
 
-function ClaudeFields({ editor }: { editor: ConfigEditor<'claude'> }): React.JSX.Element {
+function AgentSections({
+  agent,
+  editor
+}: {
+  agent: AgentId
+  editor: ConfigEditor
+}): React.JSX.Element {
   const { draft, patch } = editor
-  const saved = useSavedConfig('claude')
+  const catalog = CATALOGS[agent]
   // Haiku models take no effort levels (code.claude.com/docs/en/model-config),
   // so the effort select grays out while haiku is the drafted model. Picking
   // haiku reverts any drafted effort change so the inert select never saves a
   // new value; a previously stored effortLevel key stays untouched.
-  const effortInert = draft?.agent.model === 'haiku'
+  const effortInert = agent === 'claude' && draft?.agent.model === 'haiku'
   return (
     <>
       <FieldSet className="gap-0">
         <FieldLegend>Model provider</FieldLegend>
         <ProviderFields
           provider={draft?.provider}
-          baseUrlDescription="Endpoint speaking the Anthropic Messages API."
-          apiKeyDescription="Sent to the configured endpoint; stored in settings.json."
+          baseUrlDescription={catalog.baseUrlDescription}
+          apiKeyDescription={catalog.apiKeyDescription}
           onChange={(provider) => patch((current) => ({ ...current, provider }))}
         />
       </FieldSet>
 
       <FieldSet className="gap-0">
         <FieldLegend>Agent defaults</FieldLegend>
-        {CLAUDE_AGENT_FIELDS.map((field) => (
+        {catalog.agentFields.map((field) => (
           <AgentFieldRow
             key={field.key}
             field={field}
             value={draft?.agent[field.key] ?? null}
-            disabled={!draft || (field.key === 'effortLevel' && effortInert)}
+            disabled={!draft || (effortInert && field.key === 'effortLevel')}
             onChange={(value) =>
               patch((current) => {
-                const agent = { ...current.agent, [field.key]: value }
-                if (field.key === 'model' && value === 'haiku') {
-                  agent.effortLevel = saved?.agent.effortLevel ?? null
+                const values: AgentConfigValues['agent'] = {
+                  ...current.agent,
+                  [field.key]: value
                 }
-                return { ...current, agent }
+                if (agent === 'claude' && field.key === 'model' && value === 'haiku') {
+                  values.effortLevel = editor.saved?.agent.effortLevel ?? null
+                }
+                return { ...current, agent: values }
               })
             }
           />
@@ -183,57 +235,7 @@ function ClaudeFields({ editor }: { editor: ConfigEditor<'claude'> }): React.JSX
 
       <FieldSet className="gap-0">
         <FieldLegend>Features</FieldLegend>
-        {CLAUDE_FEATURE_FIELDS.map((field) => (
-          <FeatureRow
-            key={field.key}
-            field={field}
-            enabled={draft?.features[field.key] ?? false}
-            disabled={!draft}
-            onChange={(enabled) =>
-              patch((current) => ({
-                ...current,
-                features: { ...current.features, [field.key]: enabled }
-              }))
-            }
-          />
-        ))}
-      </FieldSet>
-    </>
-  )
-}
-
-function CodexFields({ editor }: { editor: ConfigEditor<'codex'> }): React.JSX.Element {
-  const { draft, patch } = editor
-  return (
-    <>
-      <FieldSet className="gap-0">
-        <FieldLegend>Model provider</FieldLegend>
-        <ProviderFields
-          provider={draft?.provider}
-          baseUrlDescription="Endpoint speaking the OpenAI Responses API."
-          apiKeyDescription="Sent to the configured endpoint; stored in config.toml."
-          onChange={(provider) => patch((current) => ({ ...current, provider }))}
-        />
-      </FieldSet>
-
-      <FieldSet className="gap-0">
-        <FieldLegend>Agent defaults</FieldLegend>
-        {CODEX_AGENT_FIELDS.map((field) => (
-          <AgentFieldRow
-            key={field.key}
-            field={field}
-            value={draft?.agent[field.key] ?? null}
-            disabled={!draft}
-            onChange={(value) =>
-              patch((current) => ({ ...current, agent: { ...current.agent, [field.key]: value } }))
-            }
-          />
-        ))}
-      </FieldSet>
-
-      <FieldSet className="gap-0">
-        <FieldLegend>Features</FieldLegend>
-        {CODEX_FEATURE_FIELDS.map((field) => (
+        {catalog.featureFields.map((field) => (
           <FeatureRow
             key={field.key}
             field={field}
@@ -336,11 +338,7 @@ function AgentFieldRow({
   disabled,
   onChange
 }: {
-  field: {
-    label: string
-    description: string
-    options: readonly { value: string; label: string; description: string }[]
-  }
+  field: AgentFieldDef
   value: string | null
   disabled: boolean
   onChange: (value: string) => void
@@ -379,7 +377,7 @@ function FeatureRow({
   disabled,
   onChange
 }: {
-  field: { label: string; description: string; note?: { recommended: string; reason: string } }
+  field: FeatureFieldDef
   enabled: boolean
   disabled: boolean
   onChange: (enabled: boolean) => void

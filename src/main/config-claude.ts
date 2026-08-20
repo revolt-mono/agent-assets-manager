@@ -1,16 +1,24 @@
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import {
-  assertProviderDraft,
-  CLAUDE_AGENT_FIELDS,
-  CLAUDE_FEATURE_FIELDS,
-  type ClaudeAgentSettingKey,
-  type ClaudeConfig,
-  type ClaudeFeatureSettingKey
-} from '../shared/config'
+import type { z } from 'zod'
+import { CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS } from '../shared/config'
+import { configDraftSchema } from './config-draft'
 
 export const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
+
+type ClaudeAgentSettingKey = Extract<
+  (typeof CLAUDE_AGENT_FIELDS)[number],
+  { storage: 'settings' }
+>['key']
+type ClaudeFeatureSettingKey = Extract<
+  (typeof CLAUDE_FEATURE_FIELDS)[number],
+  { storage: 'settings' }
+>['key']
+
+const claudeDraft = configDraftSchema(CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS)
+
+export type ClaudeConfig = z.infer<typeof claudeDraft>
 
 // ~/.claude/settings.json holds much more than the managed toggles
 // (permissions, hooks, user-set env vars). The declared type covers only the
@@ -30,9 +38,10 @@ export async function loadClaudeConfig(): Promise<ClaudeConfig> {
   return toConfig(await loadSettings())
 }
 
-// Validates the untrusted IPC draft while diffing against the file, then
-// writes changed entries in one pass; throws before touching disk.
-export async function saveClaudeConfig(next: ClaudeConfig): Promise<void> {
+// Parses the untrusted IPC draft against the catalog schema, then writes
+// changed entries in one pass; throws before touching disk.
+export async function saveClaudeConfig(values: ClaudeConfig): Promise<void> {
+  const next = claudeDraft.parse(values)
   const settings = await loadSettings()
   const current = toConfig(settings)
   const env = { ...settings.env }
@@ -40,18 +49,12 @@ export async function saveClaudeConfig(next: ClaudeConfig): Promise<void> {
   for (const field of CLAUDE_AGENT_FIELDS) {
     const value = next.agent[field.key]
     if (value === null || value === current.agent[field.key]) continue
-    if (!field.options.some((option) => option.value === value)) {
-      throw new Error(`Unsupported ${field.key} value: ${value}`)
-    }
     if (field.storage === 'env') env[field.key] = value
     else settings[field.key] = value
     changed = true
   }
   for (const field of CLAUDE_FEATURE_FIELDS) {
     const enabled = next.features[field.key]
-    if (enabled !== true && enabled !== false) {
-      throw new Error(`Unsupported ${field.key} value: ${enabled}`)
-    }
     if (enabled === current.features[field.key]) continue
     if (field.storage === 'env') {
       if (enabled) env[field.key] = '1'
@@ -64,7 +67,6 @@ export async function saveClaudeConfig(next: ClaudeConfig): Promise<void> {
   // writes both and disabling deletes both.
   const provider = next.provider
   if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
-    assertProviderDraft(provider)
     if (provider.enabled) {
       env.ANTHROPIC_BASE_URL = provider.baseUrl
       env.ANTHROPIC_AUTH_TOKEN = provider.apiKey
