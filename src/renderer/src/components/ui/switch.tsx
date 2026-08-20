@@ -12,8 +12,12 @@ import {
 import { motion, useMotionValue, animate, type Transition } from "motion/react";
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { cn } from "@renderer/lib/utils";
-import { spring } from "@renderer/lib/springs";
-import { useSize, type SizeVariant } from "@renderer/lib/size-context";
+
+type SizeVariant = "default" | "compact";
+
+// Critically damped: lands exactly with no overshoot, so the thumb settles
+// precisely on either end of the track.
+const SPRING: Transition = { type: "spring", duration: 0.16, bounce: 0 };
 
 interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
   label?: string;
@@ -21,12 +25,11 @@ interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
   onToggle: () => void;
   disabled?: boolean;
   thumbTransition?: Transition;
-  /** Pins the switch to one step of the size ladder (see /docs/sizes).
-   *  Omitted, it follows the surrounding SizeProvider. */
+  /** Compact steps the whole control down for dense surfaces. */
   size?: SizeVariant;
 }
 
-// Track/thumb geometry per ladder step. The hover pill-extend and press
+// Geometry and label classes per size step. The hover pill-extend and press
 // squash scale down with the thumb so the compact switch keeps the same feel.
 const METRICS = {
   default: {
@@ -36,6 +39,9 @@ const METRICS = {
     pillExtend: 2,
     pressExtend: 4,
     pressShrink: 4,
+    gap: "gap-2",
+    px: "px-3",
+    text: "text-[13px]",
   },
   compact: {
     trackWidth: 28,
@@ -44,6 +50,9 @@ const METRICS = {
     pillExtend: 2,
     pressExtend: 3,
     pressShrink: 3,
+    gap: "gap-1",
+    px: "px-2.5",
+    text: "text-[12px]",
   },
 } as const;
 
@@ -51,13 +60,12 @@ const THUMB_OFFSET = 2;
 const DRAG_DEAD_ZONE = 2;
 
 const Switch = forwardRef<HTMLDivElement, SwitchProps>(
-  ({ label, checked, onToggle, disabled = false, thumbTransition, size, className, ...props }, ref) => {
+  ({ label, checked, onToggle, disabled = false, thumbTransition, size = "default", className, ...props }, ref) => {
     const labelId = useId();
     const hasMounted = useRef(false);
     const [hovered, setHovered] = useState(false);
     const [pressed, setPressed] = useState(false);
-    const sizeClasses = useSize(size);
-    const m = METRICS[sizeClasses.variant];
+    const m = METRICS[size];
     const thumbTravel = m.trackWidth - m.thumbSize - THUMB_OFFSET * 2;
 
     const dragging = useRef(false);
@@ -92,7 +100,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
       if (!hasMounted.current) {
         motionX.set(thumbX);
       } else {
-        animate(motionX, thumbX, thumbTransition ?? spring.moderate);
+        animate(motionX, thumbX, thumbTransition ?? SPRING);
       }
     }, [thumbX, motionX, thumbTransition]);
 
@@ -154,7 +162,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
             const snapTarget = checked
               ? THUMB_OFFSET + thumbTravel
               : THUMB_OFFSET;
-            animate(motionX, snapTarget, thumbTransition ?? spring.moderate);
+            animate(motionX, snapTarget, thumbTransition ?? SPRING);
           }
 
           requestAnimationFrame(() => {
@@ -177,7 +185,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
           const snapTarget = checked
             ? THUMB_OFFSET + thumbTravel
             : THUMB_OFFSET;
-          animate(motionX, snapTarget, thumbTransition ?? spring.moderate);
+          animate(motionX, snapTarget, thumbTransition ?? SPRING);
         }
 
         pointerStart.current = null;
@@ -190,9 +198,9 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
         ref={ref}
         className={cn(
           "relative z-10 flex items-center cursor-pointer select-none touch-none",
-          sizeClasses.gap,
-          label && sizeClasses.px,
-          sizeClasses.variant === "compact" ? "py-1" : "py-2",
+          m.gap,
+          label && m.px,
+          size === "compact" ? "py-1" : "py-2",
           disabled && "opacity-50 pointer-events-none",
           className
         )}
@@ -263,7 +271,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
                     width: thumbWidth,
                     height: thumbHeight,
                   }}
-                  transition={hasMounted.current ? (thumbTransition ?? spring.moderate) : { duration: 0 }}
+                  transition={hasMounted.current ? (thumbTransition ?? SPRING) : { duration: 0 }}
                 />
               );
             }}
@@ -277,7 +285,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
               // text-box trim recenters the letterforms against the track; the
               // track is taller than the label, so layout doesn't change.
               "[text-box:trim-both_cap_alphabetic] transition-[color] duration-80",
-              sizeClasses.text,
+              m.text,
               checked ? "text-foreground" : "text-muted-foreground"
             )}
           >

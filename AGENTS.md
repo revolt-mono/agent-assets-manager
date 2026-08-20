@@ -20,7 +20,7 @@ src/
 └── renderer/src
     ├── features       one vertical slice per page (config, skills, usage), each a page component plus an ipc-backed store
     ├── components     app chrome (PageHeader, AgentTabsList, logos, IconSwap); ui/ is vendored shadcn
-    ├── lib            store primitive, size ladder, motion springs, cn
+    ├── lib            store primitive, cn
     └── hooks          shared react hooks
 tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
 ```
