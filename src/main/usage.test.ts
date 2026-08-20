@@ -4,6 +4,7 @@ import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
 import type { UsageBucket } from '../shared/usage'
 import { invokeIpc } from './electron-stub'
+import { registerUsage } from './usage'
 
 function claudeLine(
   id: string,
@@ -33,9 +34,6 @@ let claudeLog: string
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'usage-home-'))
   process.env.HOME = home
-  // LOG_SOURCES resolve homedir() at import time, so load the module only
-  // after HOME points at the fixture directory.
-  const { registerUsage } = await import('./usage')
   registerUsage()
 
   const projects = join(home, '.claude', 'projects', 'proj')

@@ -1,5 +1,9 @@
 import type { AgentId } from './agent'
 
+// Widest UI range in calendar days; main prunes logs just past this window,
+// so a wider range must move this constant, not just the range table.
+export const MAX_RANGE_DAYS = 30
+
 export type UsageTokens = {
   input: number
   output: number

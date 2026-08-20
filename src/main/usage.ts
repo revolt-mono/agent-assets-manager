@@ -1,7 +1,8 @@
 import { readdir, stat } from 'fs/promises'
+import { homedir } from 'os'
 import { join } from 'path'
 import { ipcMain } from 'electron'
-import type { UsageBucket } from '../shared/usage'
+import { MAX_RANGE_DAYS, type UsageBucket } from '../shared/usage'
 import { LOG_SOURCES, type UsageEvent } from './usage-logs'
 
 // Built-in price table, USD per million tokens.
@@ -80,12 +81,12 @@ async function sweepLogs(
   cache: ReadonlyMap<string, CachedFile>
 ): Promise<{ events: UsageEvent[]; cache: Map<string, CachedFile> }> {
   const next = new Map<string, CachedFile>()
-  // The widest UI range is 30 calendar days; one extra day covers timezone
-  // and daylight-saving boundaries before the renderer filters timestamps.
-  const oldestFileMtime = Date.now() - 31 * 24 * 60 * 60 * 1000
+  // One extra day past the widest UI range covers timezone and daylight-saving
+  // boundaries before the renderer filters timestamps.
+  const oldestFileMtime = Date.now() - (MAX_RANGE_DAYS + 1) * 24 * 60 * 60 * 1000
   const lists = await Promise.all(
     LOG_SOURCES.map(async (source) => {
-      const files = await filesUnder(source.root, source.match)
+      const files = await filesUnder(join(homedir(), ...source.root), source.match)
       const events: UsageEvent[] = []
       // Chunked so a large log history cannot exhaust file descriptors.
       for (let start = 0; start < files.length; start += 32) {

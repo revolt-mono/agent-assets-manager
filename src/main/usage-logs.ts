@@ -1,6 +1,4 @@
 import { readFile } from 'fs/promises'
-import { homedir } from 'os'
-import { join } from 'path'
 import { z } from 'zod'
 import type { AgentId } from '../shared/agent'
 
@@ -20,22 +18,18 @@ export type UsageEvent = {
   dedupe: string | null
 }
 
-export type LogSource = {
-  root: string
-  match: (name: string) => boolean
-  parse: (file: string) => Promise<UsageEvent[]>
-}
-
 const isCodexLog = (name: string): boolean => name.startsWith('rollout-') && name.endsWith('.jsonl')
 
-export const LOG_SOURCES: LogSource[] = [
+// Roots are segments under the home directory, resolved per sweep so nothing
+// freezes homedir() at import time.
+export const LOG_SOURCES = [
   {
-    root: join(homedir(), '.claude', 'projects'),
-    match: (name) => name.endsWith('.jsonl'),
+    root: ['.claude', 'projects'],
+    match: (name: string) => name.endsWith('.jsonl'),
     parse: parseClaudeLog
   },
-  { root: join(homedir(), '.codex', 'sessions'), match: isCodexLog, parse: parseCodexLog },
-  { root: join(homedir(), '.codex', 'archived_sessions'), match: isCodexLog, parse: parseCodexLog }
+  { root: ['.codex', 'sessions'], match: isCodexLog, parse: parseCodexLog },
+  { root: ['.codex', 'archived_sessions'], match: isCodexLog, parse: parseCodexLog }
 ]
 
 // Scans bytes so irrelevant log lines never become JS strings. Parsed JSON

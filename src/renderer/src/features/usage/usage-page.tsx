@@ -18,15 +18,15 @@ import { PageHeader } from '@renderer/components/page-header'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { compact, usd, wholeUsd } from '@renderer/features/usage/format'
-import { refreshUsage, useUsage } from '@renderer/features/usage/store'
+import { refreshUsage, useUsage, type UsageData } from '@renderer/features/usage/store'
 import { ModelsTable, type ModelRow } from '@renderer/features/usage/models-table'
 import { AGENTS, parseAgent } from '@shared/agent'
-import type { UsageBucket } from '@shared/usage'
+import { MAX_RANGE_DAYS } from '@shared/usage'
 
 const RANGES = [
   { id: '24h', label: '24 hours', unit: 'hour', count: 24 },
   { id: '7d', label: '7 days', unit: 'day', count: 7 },
-  { id: '30d', label: '30 days', unit: 'day', count: 30 }
+  { id: '30d', label: '30 days', unit: 'day', count: MAX_RANGE_DAYS }
 ] as const
 
 type Range = (typeof RANGES)[number]
@@ -38,10 +38,10 @@ const chartConfig = {
 
 type ChartPoint = { start: number; label: string; claude: number; codex: number }
 
-// One zeroed point per hour or local calendar day, oldest first.
-function emptyPoints({ unit, count }: Range): ChartPoint[] {
+// One zeroed point per hour or local calendar day ending at `end`, oldest first.
+function emptyPoints({ unit, count }: Range, end: number): ChartPoint[] {
   return Array.from({ length: count }, (_, index) => {
-    const start = new Date()
+    const start = new Date(end)
     if (unit === 'hour') {
       start.setMinutes(0, 0, 0)
       start.setHours(start.getHours() - (count - 1 - index))
@@ -59,8 +59,8 @@ function emptyPoints({ unit, count }: Range): ChartPoint[] {
 
 // Pure roll-up of the priced buckets inside the range window: chart points,
 // totals, and per-model rows, in one pass.
-function aggregate(range: Range, buckets: UsageBucket[]) {
-  const points = emptyPoints(range)
+function aggregate(range: Range, { at, buckets }: UsageData) {
+  const points = emptyPoints(range, at)
   const totals = { cost: 0, tokens: 0, claude: 0, codex: 0 }
   const rows = new Map<string, ModelRow>()
   for (const bucket of buckets) {
@@ -97,11 +97,9 @@ function aggregate(range: Range, buckets: UsageBucket[]) {
 
 export function UsagePage(): React.JSX.Element {
   const [range, setRange] = useState<Range>(RANGES[0])
-  const buckets = useUsage()
+  const data = useUsage()
   const [refreshing, setRefreshing] = useState(false)
-  const busy = refreshing || buckets === undefined
-
-  const view = useMemo(() => aggregate(range, buckets ?? []), [range, buckets])
+  const busy = refreshing || data === undefined
 
   return (
     <Tabs
@@ -146,12 +144,21 @@ export function UsagePage(): React.JSX.Element {
         </TabsList>
       </PageHeader>
 
-      {buckets === undefined ? (
+      {data === undefined ? (
         <div className="flex flex-1 items-center justify-center gap-4">
           <ThinkingOrb state="composing" size={64} />
           <span className="shimmer text-sm text-muted-foreground">Parsing usage...</span>
         </div>
-      ) : buckets.length === 0 ? (
+      ) : data === 'error' ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Could not read usage</EmptyTitle>
+            <EmptyDescription>
+              Something failed while parsing the session logs. Refresh to retry.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : data.buckets.length === 0 ? (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>No usage yet</EmptyTitle>
@@ -161,59 +168,67 @@ export function UsagePage(): React.JSX.Element {
           </EmptyHeader>
         </Empty>
       ) : (
-        <TabsContent
-          value={range.id}
-          className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 py-2"
-        >
-          <div className="grid shrink-0 grid-cols-4 gap-4">
-            <Stat label="Spend" value={usd.format(view.totals.cost)} />
-            <Stat label="Tokens" value={compact.format(view.totals.tokens)} />
-            <Stat label="Claude" value={usd.format(view.totals.claude)} />
-            <Stat label="Codex" value={usd.format(view.totals.codex)} />
-          </div>
-
-          <section className="flex shrink-0 flex-col gap-4">
-            <h2 className="text-sm font-medium">Spend over time</h2>
-            <ChartContainer config={chartConfig} className="aspect-auto h-52 w-full">
-              <BarChart data={view.points} margin={{ left: 0, right: 0 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={52}
-                  tickFormatter={(value: number) => wholeUsd.format(value)}
-                />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      formatter={(value, name, item) => (
-                        <>
-                          <div
-                            className="size-2.5 shrink-0 rounded-xs"
-                            style={{ background: item.color }}
-                          />
-                          {chartConfig[parseAgent(String(name))].label}
-                          <span className="ml-auto font-mono font-medium tabular-nums">
-                            {usd.format(Number(value))}
-                          </span>
-                        </>
-                      )}
-                    />
-                  }
-                />
-                <ChartLegend content={<ChartLegendContent />} />
-                {/* the built-in tween tears when the point count changes across tabs */}
-                <Bar dataKey="claude" fill="var(--color-claude)" isAnimationActive={false} />
-                <Bar dataKey="codex" fill="var(--color-codex)" isAnimationActive={false} />
-              </BarChart>
-            </ChartContainer>
-          </section>
-
-          <ModelsTable rows={view.rows} />
-        </TabsContent>
+        <UsageReport range={range} data={data} />
       )}
     </Tabs>
+  )
+}
+
+function UsageReport({ range, data }: { range: Range; data: UsageData }): React.JSX.Element {
+  const view = useMemo(() => aggregate(range, data), [range, data])
+
+  return (
+    <TabsContent
+      value={range.id}
+      className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 py-2"
+    >
+      <div className="grid shrink-0 grid-cols-4 gap-4">
+        <Stat label="Spend" value={usd.format(view.totals.cost)} />
+        <Stat label="Tokens" value={compact.format(view.totals.tokens)} />
+        <Stat label="Claude" value={usd.format(view.totals.claude)} />
+        <Stat label="Codex" value={usd.format(view.totals.codex)} />
+      </div>
+
+      <section className="flex shrink-0 flex-col gap-4">
+        <h2 className="text-sm font-medium">Spend over time</h2>
+        <ChartContainer config={chartConfig} className="aspect-auto h-52 w-full">
+          <BarChart data={view.points} margin={{ left: 0, right: 0 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={52}
+              tickFormatter={(value: number) => wholeUsd.format(value)}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name, item) => (
+                    <>
+                      <div
+                        className="size-2.5 shrink-0 rounded-xs"
+                        style={{ background: item.color }}
+                      />
+                      {chartConfig[parseAgent(String(name))].label}
+                      <span className="ml-auto font-mono font-medium tabular-nums">
+                        {usd.format(Number(value))}
+                      </span>
+                    </>
+                  )}
+                />
+              }
+            />
+            <ChartLegend content={<ChartLegendContent />} />
+            {/* the built-in tween tears when the point count changes across tabs */}
+            <Bar dataKey="claude" fill="var(--color-claude)" isAnimationActive={false} />
+            <Bar dataKey="codex" fill="var(--color-codex)" isAnimationActive={false} />
+          </BarChart>
+        </ChartContainer>
+      </section>
+
+      <ModelsTable rows={view.rows} />
+    </TabsContent>
   )
 }
 
