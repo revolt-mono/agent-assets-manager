@@ -1,10 +1,10 @@
 import { cn } from "@renderer/lib/utils"
-import { HugeiconsIcon } from "@hugeicons/react"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { Loading03Icon } from "@hugeicons/core-free-icons"
 
-function Spinner({ className, ...props }: Omit<React.ComponentProps<"svg">, "strokeWidth">) {
+function Spinner({ icon = Loading03Icon, className, ...props }: Omit<React.ComponentProps<"svg">, "strokeWidth"> & { icon?: IconSvgElement }) {
   return (
-    <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} data-slot="spinner" role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
+    <HugeiconsIcon icon={icon} strokeWidth={2} data-slot="spinner" role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
   )
 }
 
