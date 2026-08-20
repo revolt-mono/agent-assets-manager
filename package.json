@@ -1,7 +1,7 @@
 {
   "name": "volt",
   "productName": "Volt",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Manager for coding agent configs, skills, and usage",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@11.22.0",
