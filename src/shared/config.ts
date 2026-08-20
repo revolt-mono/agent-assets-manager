@@ -300,6 +300,19 @@ const claudeFeatureFields = [
     }
   },
   {
+    key: 'awaySummaryEnabled',
+    bindings: [
+      { kind: 'setting', key: 'awaySummaryEnabled', enabledValue: true, defaultValue: true }
+    ],
+    label: 'Session recap',
+    description: 'Recap what happened when you return after 5+ minutes away.',
+    note: {
+      recommended: 'on',
+      reason:
+        'the recap burns an extra model call, but catching up at a glance beats rereading scrollback when you juggle sessions or lose the thread easily.'
+    }
+  },
+  {
     key: 'switchModelsOnFlag',
     bindings: [
       { kind: 'setting', key: 'switchModelsOnFlag', enabledValue: true, defaultValue: true }
