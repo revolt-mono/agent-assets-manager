@@ -357,19 +357,17 @@ function FeatureRow({
       title={
         <>
           {field.label}
-          {field.note && (
-            <Tooltip>
-              <TooltipTrigger render={<span className="text-muted-foreground" />}>
-                <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <span>
-                  Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
-                  {field.note.reason}
-                </span>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger render={<span className="text-muted-foreground" />}>
+              <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <span>
+                Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
+                {field.note.reason}
+              </span>
+            </TooltipContent>
+          </Tooltip>
         </>
       }
       description={field.description}

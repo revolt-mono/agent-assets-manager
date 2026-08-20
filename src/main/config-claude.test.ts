@@ -25,8 +25,9 @@ beforeAll(async () => {
 test('a missing settings file loads pure defaults', async () => {
   const config = await load()
   expect(config.features.promptSuggestionEnabled).toBe(true)
-  expect(config.features.disableArtifact).toBe(false)
-  expect(config.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(false)
+  expect(config.features.artifacts).toBe(true)
+  expect(config.features.autoMemory).toBe(true)
+  expect(config.features.noFlicker).toBe(false)
   expect(config.defaults.outputStyle).toBe(null)
   expect(config.defaults.model).toBe(null)
   expect(config.defaults.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(null)
@@ -65,7 +66,7 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
   )
   const config = await load()
   expect(config.features.promptSuggestionEnabled).toBe(false)
-  expect(config.features.CLAUDE_CODE_NO_FLICKER).toBe(true) // "true" counts as on, not just "1"
+  expect(config.features.noFlicker).toBe(true) // "true" counts as on, not just "1"
 
   await save({
     provider: config.provider,
@@ -79,8 +80,8 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
     features: {
       ...config.features,
       promptSuggestionEnabled: true, // back to default: key must disappear
-      CLAUDE_CODE_NO_FLICKER: false,
-      CLAUDE_CODE_DISABLE_AUTO_MEMORY: true
+      noFlicker: false,
+      autoMemory: false
     }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
@@ -98,8 +99,8 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
 
   const roundTrip = await load()
   expect(roundTrip.features.promptSuggestionEnabled).toBe(true)
-  expect(roundTrip.features.CLAUDE_CODE_NO_FLICKER).toBe(false)
-  expect(roundTrip.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
+  expect(roundTrip.features.noFlicker).toBe(false)
+  expect(roundTrip.features.autoMemory).toBe(false)
   expect(roundTrip.defaults.outputStyle).toBe('default')
   expect(roundTrip.defaults.model).toBe('opus')
   expect(roundTrip.defaults.effortLevel).toBe('max')
@@ -123,16 +124,16 @@ test('off-values and unmanaged hand edits load as unset; unlisted values survive
     })
   )
   const config = await load()
-  expect(config.features.disableArtifact).toBe(false)
-  expect(config.features.CLAUDE_CODE_NO_FLICKER).toBe(false)
-  expect(config.features.CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT).toBe(true)
-  expect(config.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(false)
-  expect(config.features.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS).toBe(false)
+  expect(config.features.artifacts).toBe(true)
+  expect(config.features.noFlicker).toBe(false)
+  expect(config.features.simpleSystemPrompt).toBe(true)
+  expect(config.features.autoMemory).toBe(true)
+  expect(config.features.gitInstructions).toBe(true)
   expect(config.defaults.outputStyle).toBe(null)
   expect(config.defaults.model).toBe(null)
   expect(config.defaults.effortLevel).toBe(null)
 
-  await save({ ...config, features: { ...config.features, disableArtifact: true } })
+  await save({ ...config, features: { ...config.features, artifacts: false } })
   expect(JSON.parse(await readFile(file, 'utf8')).outputStyle).toBe('My custom style')
   expect(JSON.parse(await readFile(file, 'utf8')).model).toBe('claude-opus-4-1')
 })
@@ -151,29 +152,29 @@ test('an empty env object is dropped from the file', async () => {
   const config = await load()
   await save({
     ...config,
-    features: { ...config.features, CLAUDE_CODE_NO_FLICKER: false }
+    features: { ...config.features, noFlicker: false }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
 })
 
-test('auto-memory disable reads either control and writes both in sync', async () => {
+test('auto memory reads off from either control and writes both in sync', async () => {
   await writeFile(file, JSON.stringify({ env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' } }))
-  expect((await load()).features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
+  expect((await load()).features.autoMemory).toBe(false)
 
   await writeFile(file, JSON.stringify({ autoMemoryEnabled: false }))
   const disabled = await load()
-  expect(disabled.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
+  expect(disabled.features.autoMemory).toBe(false)
 
   await save({
     ...disabled,
-    features: { ...disabled.features, CLAUDE_CODE_DISABLE_AUTO_MEMORY: false }
+    features: { ...disabled.features, autoMemory: true }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
 
   const enabled = await load()
   await save({
     ...enabled,
-    features: { ...enabled.features, CLAUDE_CODE_DISABLE_AUTO_MEMORY: true }
+    features: { ...enabled.features, autoMemory: false }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
     autoMemoryEnabled: false,
@@ -218,7 +219,7 @@ test('a mis-shaped file rejects load and save before any write', async () => {
   await writeFile(file, '[]')
   await expect(load()).rejects.toThrow('Unsupported settings.json shape')
   await expect(
-    save({ ...config, features: { ...config.features, disableArtifact: true } })
+    save({ ...config, features: { ...config.features, artifacts: false } })
   ).rejects.toThrow()
   expect(await readFile(file, 'utf8')).toBe('[]')
 

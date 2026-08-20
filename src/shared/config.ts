@@ -14,11 +14,11 @@ export type FeatureField = {
   key: string
   label: string
   description: string
-  note?: { recommended: string; reason: string }
+  note: { recommended: 'on' | 'off'; reason: string }
 }
 
 type ClaudeFeatureBinding =
-  | { kind: 'env'; key: string }
+  | { kind: 'env'; key: string; enabledValue: boolean }
   | { kind: 'setting'; key: string; enabledValue: boolean; defaultValue: boolean }
 
 const codexDefaultFields = [
@@ -239,52 +239,53 @@ const claudeDefaultFields = [
   }
 ] as const satisfies readonly (DefaultField & { storage: 'settings' | 'env' })[]
 
-// Each feature declares every setting that controls it. A setting binding maps
-// the UI's enabled state to Claude Code's boolean value; an env binding is on
-// for any truthy value. Missing bindings use their declared defaults.
+// Toggles always read "enabled means the feature is on". Each binding names a
+// stored control and the boolean value meaning on (an env var stores its
+// boolean as truthy-versus-absent); the feature is on only when every binding
+// agrees, so the DISABLE_* vars invert via enabledValue: false.
 const claudeFeatureFields = [
   {
-    key: 'disableClaudeAiConnectors',
+    key: 'claudeAiConnectors',
     bindings: [
       {
         kind: 'setting',
         key: 'disableClaudeAiConnectors',
-        enabledValue: true,
+        enabledValue: false,
         defaultValue: false
       }
     ],
-    label: 'Disable claude.ai connectors',
-    description: 'Stop auto-fetching and connecting MCP connectors from claude.ai.',
+    label: 'Claude.ai connectors',
+    description: 'Auto-fetch and connect MCP connectors from claude.ai.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason:
         'claude.ai connectors auto-attach MCP servers you never asked for and bloat the context.'
     }
   },
   {
-    key: 'disableArtifact',
+    key: 'artifacts',
     bindings: [
-      { kind: 'setting', key: 'disableArtifact', enabledValue: true, defaultValue: false }
+      { kind: 'setting', key: 'disableArtifact', enabledValue: false, defaultValue: false }
     ],
-    label: 'Disable artifacts',
-    description: 'Remove the Artifact tool that publishes session output to claude.ai.',
+    label: 'Artifacts',
+    description: 'Offer the Artifact tool that publishes session output to claude.ai.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason:
         'publishing session output to claude.ai is never wanted, and the tool wastes prompt space.'
     }
   },
   {
-    key: 'disableRemoteControl',
+    key: 'remoteControl',
     bindings: [
-      { kind: 'setting', key: 'disableRemoteControl', enabledValue: true, defaultValue: false }
+      { kind: 'setting', key: 'disableRemoteControl', enabledValue: false, defaultValue: false }
     ],
-    label: 'Disable remote control',
-    description: 'Block remote-control sessions, auto-start, and the in-session toggle.',
+    label: 'Remote control',
+    description: 'Allow remote-control sessions, auto-start, and the in-session toggle.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason:
-        'nothing should drive local sessions remotely; removing remote control cuts attack surface and prompt bloat.'
+        'nothing should drive local sessions remotely; turning this off cuts attack surface and prompt bloat.'
     }
   },
   {
@@ -342,77 +343,79 @@ const claudeFeatureFields = [
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' }],
-    label: 'Disable nonessential traffic',
-    description: 'Skip auto-updates, telemetry, error reporting, and other background requests.',
+    key: 'nonessentialTraffic',
+    bindings: [
+      { kind: 'env', key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', enabledValue: false }
+    ],
+    label: 'Nonessential traffic',
+    description: 'Send auto-updates, telemetry, error reporting, and other background requests.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason: 'auto-updates, telemetry, and error reporting are background traffic with no value.'
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS' }],
-    label: 'Disable bundled skills',
-    description: 'Remove built-in skills and slash commands like /code-review and /run.',
+    key: 'bundledSkills',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS', enabledValue: false }],
+    label: 'Bundled skills',
+    description: 'Ship built-in skills and slash commands like /code-review and /run.',
     note: {
-      recommended: 'off',
+      recommended: 'on',
       reason:
         'a blanket disable also removes useful built-in commands; deny unwanted ones individually.'
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL' }],
-    label: 'Disable Claude API skill',
-    description: 'Stop the bundled skill that auto-triggers on Anthropic SDK and API code.',
+    key: 'claudeApiSkill',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL', enabledValue: false }],
+    label: 'Claude API skill',
+    description: 'Bundled skill that auto-triggers on Anthropic SDK and API code.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason: 'auto-triggers on Anthropic SDK code and injects context you rarely need.'
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL' }],
-    label: 'Disable Claude Code skill',
-    description: 'Stop the bundled guide skill that answers Claude Code usage questions.',
+    key: 'claudeCodeSkill',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL', enabledValue: false }],
+    label: 'Claude Code skill',
+    description: 'Bundled guide skill that answers Claude Code usage questions.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason: 'usage questions are rare, so the bundled guide skill just wastes context.'
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS' }],
-    label: 'Disable git instructions',
-    description: 'Drop the built-in git workflow guidance from the system prompt.',
+    key: 'gitInstructions',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS', enabledValue: false }],
+    label: 'Git instructions',
+    description: 'Include the built-in git workflow guidance in the system prompt.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason: 'the built-in git guidance conflicts with your own rules and bloats the prompt.'
     }
   },
   {
-    key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
+    key: 'autoMemory',
     bindings: [
-      { kind: 'env', key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY' },
+      { kind: 'env', key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY', enabledValue: false },
       {
         kind: 'setting',
         key: 'autoMemoryEnabled',
-        enabledValue: false,
+        enabledValue: true,
         defaultValue: true
       }
     ],
-    label: 'Disable auto memory',
-    description: 'Stop reading and writing per-project memory notes across sessions.',
+    label: 'Auto memory',
+    description: 'Read and write per-project memory notes across sessions.',
     note: {
-      recommended: 'on',
+      recommended: 'off',
       reason: 'stale project memory leaks into unrelated sessions; manage context yourself.'
     }
   },
   {
-    key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT' }],
+    key: 'simpleSystemPrompt',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT', enabledValue: true }],
     label: 'Simple system prompt',
     description: 'Collapse the system prompt to a minimal identity-and-cwd version.',
     note: {
@@ -422,8 +425,8 @@ const claudeFeatureFields = [
     }
   },
   {
-    key: 'CLAUDE_CODE_NO_FLICKER',
-    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_NO_FLICKER' }],
+    key: 'noFlicker',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_NO_FLICKER', enabledValue: true }],
     label: 'No-flicker renderer',
     description: 'Render the TUI on the alternate screen with mouse support and no flicker.',
     note: {

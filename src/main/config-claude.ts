@@ -128,13 +128,12 @@ function readFeature(
   field: (typeof catalog.featureFields)[number],
   settings: ClaudeSettings
 ): boolean {
-  return field.bindings.some((binding) => {
-    if (binding.kind === 'env') return envFlag(settings.env[binding.key])
-    const value = Option.getOrElse(
-      decodeBoolean(settings.values[binding.key]),
-      () => binding.defaultValue
-    )
-    return value === binding.enabledValue
+  return field.bindings.every((binding) => {
+    const stored =
+      binding.kind === 'env'
+        ? envFlag(settings.env[binding.key])
+        : Option.getOrElse(decodeBoolean(settings.values[binding.key]), () => binding.defaultValue)
+    return stored === binding.enabledValue
   })
 }
 
@@ -145,14 +144,12 @@ function writeFeature(
   env: JsonObject
 ): void {
   for (const binding of field.bindings) {
+    const stored = enabled ? binding.enabledValue : !binding.enabledValue
     if (binding.kind === 'env') {
-      if (enabled) env[binding.key] = '1'
+      if (stored) env[binding.key] = '1'
       else delete env[binding.key]
-      continue
-    }
-    const value = enabled ? binding.enabledValue : !binding.enabledValue
-    if (value === binding.defaultValue) delete settings[binding.key]
-    else settings[binding.key] = value
+    } else if (stored === binding.defaultValue) delete settings[binding.key]
+    else settings[binding.key] = stored
   }
 }
 
