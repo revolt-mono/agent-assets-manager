@@ -25,6 +25,11 @@ src/
 tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
 ```
 
+## Effect
+
+- Async and validation code uses Effect v4 (`effect@4.0.0-rc.x`), not v3; v3 docs and examples online are often wrong for this API.
+- Read `refs/effect/ai-docs/src` for v4 idioms (`Effect.gen`, `Effect.fn`, services, `Schema`, errors) and `refs/effect/migration` for v3-to-v4 renames; `refs/effect/packages` holds the source of truth.
+
 ## Engineering rules
 
 - Choose the simplest correct implementation for current requirements. Only extract shared logic for genuine duplication or when a shared invariant demands the abstraction. Inline one-off/trivial wrappers.
