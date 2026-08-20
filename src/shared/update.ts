@@ -5,6 +5,7 @@ export type UpdateState =
   | { status: 'downloaded'; version: string }
 
 export type UpdateApi = {
+  /** Pushed on every transition; main replays the current state on subscribe. */
   observe: (callback: (state: UpdateState) => void) => () => void
   proceed: () => void
 }

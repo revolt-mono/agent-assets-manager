@@ -35,18 +35,12 @@ const api: RendererApi = {
   },
   update: {
     observe: (callback) => {
-      let observing = true
-      let receivedUpdate = false
-      const listener = (_event: Electron.IpcRendererEvent, state: UpdateState): void => {
-        receivedUpdate = true
+      const listener = (_event: Electron.IpcRendererEvent, state: UpdateState): void =>
         callback(state)
-      }
       ipcRenderer.on('update:changed', listener)
-      void ipcRenderer.invoke('update:get').then((state: UpdateState) => {
-        if (observing && !receivedUpdate) callback(state)
-      })
+      // announce after attaching so main's current-state reply cannot be missed
+      ipcRenderer.send('update:subscribe')
       return () => {
-        observing = false
         ipcRenderer.removeListener('update:changed', listener)
       }
     },

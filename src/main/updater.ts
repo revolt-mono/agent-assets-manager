@@ -17,79 +17,73 @@ export function registerUpdater(): void {
       window.webContents.send('update:changed', state)
     }
   }
+  // The renderer subscribes after attaching its listener, so replying with
+  // the current state cannot race the attach the way a load-time push could.
+  ipcMain.on('update:subscribe', (event) => event.sender.send('update:changed', state))
 
-  const scheduleMockUpdate = (): void => {
-    setTimeout(() => {
-      setState({ status: 'available', version: MOCK_VERSION })
-    }, MOCK_DISCOVERY_DELAY_MS)
+  if (is.dev) {
+    // No update feed in dev: loop a fake available -> downloading -> downloaded
+    // cycle so the button stays exercisable.
+    const discover = (): void => {
+      setTimeout(
+        () => setState({ status: 'available', version: MOCK_VERSION }),
+        MOCK_DISCOVERY_DELAY_MS
+      )
+    }
+    ipcMain.on('update:proceed', () => {
+      if (state.status === 'available') {
+        const version = state.version
+        let percent = 0
+        setState({ status: 'downloading', version, percent })
+        const progressTimer = setInterval(() => {
+          percent = Math.min(100, percent + 10)
+          if (percent < 100) {
+            setState({ status: 'downloading', version, percent })
+            return
+          }
+          clearInterval(progressTimer)
+          setState({ status: 'downloaded', version })
+        }, MOCK_PROGRESS_INTERVAL_MS)
+      } else if (state.status === 'downloaded') {
+        setState({ status: 'idle' })
+        discover()
+      }
+    })
+    discover()
+    return
   }
 
-  const proceed = (): void => {
+  ipcMain.on('update:proceed', () => {
     if (state.status === 'available') {
       const version = state.version
       setState({ status: 'downloading', version, percent: 0 })
-      if (!is.dev) {
-        autoUpdater.downloadUpdate().catch(() => {
-          setState({ status: 'available', version })
-        })
-        return
-      }
-
-      let percent = 0
-      const progressTimer = setInterval(() => {
-        percent = Math.min(100, percent + 10)
-        if (percent < 100) {
-          setState({ status: 'downloading', version, percent })
-          return
-        }
-        clearInterval(progressTimer)
-        setState({ status: 'downloaded', version })
-      }, MOCK_PROGRESS_INTERVAL_MS)
-      return
+      autoUpdater.downloadUpdate().catch(() => setState({ status: 'available', version }))
+    } else if (state.status === 'downloaded') {
+      autoUpdater.quitAndInstall()
     }
+  })
 
-    if (state.status === 'downloaded') {
-      if (!is.dev) {
-        autoUpdater.quitAndInstall()
-        return
-      }
-      setState({ status: 'idle' })
-      scheduleMockUpdate()
-    }
-  }
-
-  const onUpdateAvailable = (info: UpdateInfo): void => {
+  autoUpdater.autoDownload = false
+  autoUpdater.on('error', () => {})
+  autoUpdater.on('update-available', (info: UpdateInfo) => {
     if (state.status === 'idle' || state.status === 'available') {
       setState({ status: 'available', version: info.version })
     }
-  }
-  const onDownloadProgress = (info: ProgressInfo): void => {
+  })
+  autoUpdater.on('download-progress', (info: ProgressInfo) => {
     if (state.status !== 'downloading') return
     const percent = Number.isFinite(info.percent)
       ? Math.min(100, Math.max(0, Math.round(info.percent)))
       : 0
     setState({ status: 'downloading', version: state.version, percent })
-  }
-  const onUpdateDownloaded = (info: UpdateInfo): void => {
+  })
+  autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     setState({ status: 'downloaded', version: info.version })
-  }
+  })
   const check = (): void => {
     if (state.status === 'downloading' || state.status === 'downloaded') return
     autoUpdater.checkForUpdates().catch(() => {})
   }
-
-  ipcMain.handle('update:get', () => state)
-  ipcMain.on('update:proceed', proceed)
-
-  if (is.dev) {
-    scheduleMockUpdate()
-  } else {
-    autoUpdater.autoDownload = false
-    autoUpdater.on('error', () => {})
-    autoUpdater.on('update-available', onUpdateAvailable)
-    autoUpdater.on('download-progress', onDownloadProgress)
-    autoUpdater.on('update-downloaded', onUpdateDownloaded)
-    check()
-    setInterval(check, CHECK_INTERVAL_MS)
-  }
+  check()
+  setInterval(check, CHECK_INTERVAL_MS)
 }
