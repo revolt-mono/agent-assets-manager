@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { Effect, type Fiber } from 'effect'
 
 export type Store<T> = {
   get: () => T
@@ -30,4 +31,26 @@ export function createStore<T>(initial: T, onWatch?: () => void): Store<T> {
 
 export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get)
+}
+
+// Latest wins: forking interrupts the in-flight fiber, so a stale result (or
+// its error handling) can never land after a fresher one. Shared so every
+// feature store gets the same cancellation semantics.
+export type Latest = {
+  fork: (effect: Effect.Effect<void>) => Fiber.Fiber<void>
+  interrupt: () => void
+}
+
+export function latestWins(): Latest {
+  let inflight: Fiber.Fiber<void> | undefined
+  return {
+    fork: (effect) => {
+      inflight?.interruptUnsafe()
+      inflight = Effect.runFork(effect)
+      return inflight
+    },
+    interrupt: () => {
+      inflight?.interruptUnsafe()
+    }
+  }
 }
