@@ -1,3 +1,4 @@
+import { Effect, type FileSystem, Semaphore } from 'effect'
 import { watch, type FSWatcher } from 'fs'
 import { basename, dirname } from 'path'
 import { ipcMain } from 'electron'
@@ -6,6 +7,7 @@ import type { AgentConfigValues } from '../shared/config'
 import { debouncedBroadcast } from './broadcast'
 import { CLAUDE_FILE, loadClaudeConfig, saveClaudeConfig } from './config-claude'
 import { CODEX_FILE, loadCodexConfig, saveCodexConfig } from './config-codex'
+import { runtime } from './runtime'
 
 const CONFIG_FILES = { claude: CLAUDE_FILE, codex: CODEX_FILE } satisfies Record<AgentId, string>
 
@@ -37,32 +39,21 @@ export function registerConfig(): () => void {
     }
   }
 
-  // File edits are read-modify-write; run them one at a time so rapid
-  // updates cannot overwrite each other.
-  let queue: Promise<unknown> = Promise.resolve()
-  const serialize = <T>(task: () => Promise<T>): Promise<T> => {
-    const run = queue.then(task, task)
-    queue = run.then(
-      () => undefined,
-      () => undefined
-    )
-    return run
-  }
+  // File edits are read-modify-write; the lock runs them one at a time so
+  // rapid updates cannot overwrite each other.
+  const lock = Semaphore.makeUnsafe(1)
+  const locked = <A>(edit: Effect.Effect<A, unknown, FileSystem.FileSystem>): Promise<A> =>
+    runtime.runPromise(lock.withPermit(edit).pipe(Effect.tap(() => Effect.sync(ensureWatch))))
 
-  ipcMain.handle('config:get', async (_event, agent: string) => {
-    const values = await serialize<AgentConfigValues>(
-      parseAgent(agent) === 'claude' ? loadClaudeConfig : loadCodexConfig
-    )
-    ensureWatch()
-    return values
-  })
-  ipcMain.handle('config:save', async (_event, agent: string, values) => {
-    // each writer parses the untrusted payload before touching disk
-    await serialize(() =>
+  ipcMain.handle('config:get', (_event, agent: string) =>
+    locked<AgentConfigValues>(parseAgent(agent) === 'claude' ? loadClaudeConfig : loadCodexConfig)
+  )
+  // each writer decodes the untrusted payload before touching disk
+  ipcMain.handle('config:save', (_event, agent: string, values) =>
+    locked<void>(
       parseAgent(agent) === 'claude' ? saveClaudeConfig(values) : saveCodexConfig(values)
     )
-    ensureWatch()
-  })
+  )
 
   ensureWatch()
 

@@ -2,9 +2,14 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
+import type { ClaudeConfig } from './config-claude'
+import { runtime } from './runtime'
 
 let api: typeof import('./config-claude')
 let file: string
+const load = (): Promise<ClaudeConfig> => runtime.runPromise(api.loadClaudeConfig)
+const save = (values: ClaudeConfig): Promise<void> =>
+  runtime.runPromise(api.saveClaudeConfig(values))
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-home-'))
@@ -17,7 +22,7 @@ beforeAll(async () => {
 })
 
 test('a missing settings file loads pure defaults', async () => {
-  const config = await api.loadClaudeConfig()
+  const config = await load()
   expect(config.features.promptSuggestionEnabled).toBe(true)
   expect(config.features.disableArtifact).toBe(false)
   expect(config.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(false)
@@ -34,11 +39,11 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
       env: { MY_VAR: 'keep', CLAUDE_CODE_NO_FLICKER: 'true' }
     })
   )
-  const config = await api.loadClaudeConfig()
+  const config = await load()
   expect(config.features.promptSuggestionEnabled).toBe(false)
   expect(config.features.CLAUDE_CODE_NO_FLICKER).toBe(true) // "true" counts as on, not just "1"
 
-  await api.saveClaudeConfig({
+  await save({
     provider: config.provider,
     agent: {
       ...config.agent,
@@ -64,7 +69,7 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
     }
   })
 
-  const roundTrip = await api.loadClaudeConfig()
+  const roundTrip = await load()
   expect(roundTrip.features.promptSuggestionEnabled).toBe(true)
   expect(roundTrip.features.CLAUDE_CODE_NO_FLICKER).toBe(false)
   expect(roundTrip.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
@@ -88,7 +93,7 @@ test('off-values and unmanaged hand edits load as unset; unlisted values survive
       }
     })
   )
-  const config = await api.loadClaudeConfig()
+  const config = await load()
   expect(config.features.disableArtifact).toBe(false)
   expect(config.features.CLAUDE_CODE_NO_FLICKER).toBe(false)
   expect(config.features.CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT).toBe(true)
@@ -97,23 +102,23 @@ test('off-values and unmanaged hand edits load as unset; unlisted values survive
   expect(config.agent.model).toBe(null)
   expect(config.agent.effortLevel).toBe(null)
 
-  await api.saveClaudeConfig({ ...config, features: { ...config.features, disableArtifact: true } })
+  await save({ ...config, features: { ...config.features, disableArtifact: true } })
   expect(JSON.parse(await readFile(file, 'utf8')).model).toBe('claude-opus-4-1')
 })
 
 test('an out-of-catalog agent draft value throws before touching disk', async () => {
   const before = await readFile(file, 'utf8')
-  const config = await api.loadClaudeConfig()
-  await expect(
-    api.saveClaudeConfig({ ...config, agent: { ...config.agent, model: 'gpt-5' } })
-  ).rejects.toThrow('Unsupported model value: gpt-5')
+  const config = await load()
+  await expect(save({ ...config, agent: { ...config.agent, model: 'gpt-5' } })).rejects.toThrow(
+    'Unsupported model value: gpt-5'
+  )
   expect(await readFile(file, 'utf8')).toBe(before)
 })
 
 test('an empty env object is dropped from the file', async () => {
   await writeFile(file, JSON.stringify({ env: { CLAUDE_CODE_NO_FLICKER: '1' } }))
-  const config = await api.loadClaudeConfig()
-  await api.saveClaudeConfig({
+  const config = await load()
+  await save({
     ...config,
     features: { ...config.features, CLAUDE_CODE_NO_FLICKER: false }
   })
@@ -122,17 +127,17 @@ test('an empty env object is dropped from the file', async () => {
 
 test('provider env keys round-trip and disabling deletes them', async () => {
   await writeFile(file, JSON.stringify({ env: { MY_VAR: 'keep' } }))
-  const config = await api.loadClaudeConfig()
+  const config = await load()
   expect(config.provider).toEqual({ enabled: false, baseUrl: '', apiKey: '' })
 
   await expect(
-    api.saveClaudeConfig({
+    save({
       ...config,
       provider: { enabled: true, baseUrl: 'https://proxy.example.com', apiKey: '' }
     })
   ).rejects.toThrow('Enabled provider needs a base URL and an API key')
 
-  await api.saveClaudeConfig({
+  await save({
     ...config,
     provider: { enabled: true, baseUrl: 'https://proxy.example.com', apiKey: 'sk-test' }
   })
@@ -141,26 +146,26 @@ test('provider env keys round-trip and disabling deletes them', async () => {
     ANTHROPIC_BASE_URL: 'https://proxy.example.com',
     ANTHROPIC_AUTH_TOKEN: 'sk-test'
   })
-  const enabled = await api.loadClaudeConfig()
+  const enabled = await load()
   expect(enabled.provider).toEqual({
     enabled: true,
     baseUrl: 'https://proxy.example.com',
     apiKey: 'sk-test'
   })
 
-  await api.saveClaudeConfig({ ...enabled, provider: { ...enabled.provider, enabled: false } })
+  await save({ ...enabled, provider: { ...enabled.provider, enabled: false } })
   expect(JSON.parse(await readFile(file, 'utf8')).env).toEqual({ MY_VAR: 'keep' })
 })
 
 test('a mis-shaped file rejects load and save before any write', async () => {
-  const config = await api.loadClaudeConfig() // defaults from the {} file above
+  const config = await load() // defaults from the {} file above
   await writeFile(file, '[]')
-  await expect(api.loadClaudeConfig()).rejects.toThrow('Unsupported settings.json shape')
+  await expect(load()).rejects.toThrow('Unsupported settings.json shape')
   await expect(
-    api.saveClaudeConfig({ ...config, features: { ...config.features, disableArtifact: true } })
+    save({ ...config, features: { ...config.features, disableArtifact: true } })
   ).rejects.toThrow()
   expect(await readFile(file, 'utf8')).toBe('[]')
 
   await writeFile(file, JSON.stringify({ env: [] }))
-  await expect(api.loadClaudeConfig()).rejects.toThrow('Unsupported settings.json env shape')
+  await expect(load()).rejects.toThrow('Unsupported settings.json env shape')
 })

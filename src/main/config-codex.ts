@@ -1,10 +1,10 @@
-import { mkdir, readFile, writeFile } from 'fs/promises'
+import { Effect, FileSystem, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { parse } from 'smol-toml'
-import type { z } from 'zod'
 import { CODEX_AGENT_FIELDS, CODEX_FEATURE_FIELDS, type ProviderValues } from '../shared/config'
 import { configDraftSchema } from './config-draft'
+import { orElseNotFound } from './runtime'
 import { TomlDoc } from './toml-doc'
 
 export const CODEX_FILE = join(homedir(), '.codex', 'config.toml')
@@ -13,18 +13,24 @@ const FEATURES_TABLE = 'features'
 const PROVIDER_TABLE = 'model_providers.revolt'
 
 const codexDraft = configDraftSchema(CODEX_AGENT_FIELDS, CODEX_FEATURE_FIELDS)
+const decodeDraft = Schema.decodeUnknownEffect(codexDraft)
 
-export type CodexConfig = z.infer<typeof codexDraft>
+export type CodexConfig = (typeof codexDraft)['Type']
 
-export async function loadCodexConfig(): Promise<CodexConfig> {
-  return toConfig(await loadDoc())
-}
+export class CodexConfigError extends Schema.TaggedError<CodexConfigError>()('CodexConfigError', {
+  message: Schema.String
+}) {}
+
+export const loadCodexConfig = Effect.gen(function* () {
+  return toConfig(yield* loadDoc)
+})
 
 // Parses the untrusted IPC draft against the catalog schema, then writes
-// changed entries in one pass; throws before touching disk.
-export async function saveCodexConfig(values: CodexConfig): Promise<void> {
-  const next = codexDraft.parse(values)
-  const doc = await loadDoc()
+// changed entries in one pass; fails before touching disk.
+export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (values: CodexConfig) {
+  const next = yield* decodeDraft(values)
+  const fs = yield* FileSystem.FileSystem
+  const doc = yield* loadDoc
   const current = toConfig(doc)
   let changed = false
   for (const field of CODEX_AGENT_FIELDS) {
@@ -43,7 +49,7 @@ export async function saveCodexConfig(values: CodexConfig): Promise<void> {
   if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
     // Provider values are written inside double quotes; reject the unquotable.
     if (/[\r\n"\\]/.test(provider.baseUrl + provider.apiKey)) {
-      throw new Error('Unsupported characters in provider values')
+      return yield* new CodexConfigError({ message: 'Unsupported characters in provider values' })
     }
     rewriteProvider(doc, provider)
     // Codex compresses request bodies by default, which third-party endpoints
@@ -56,18 +62,19 @@ export async function saveCodexConfig(values: CodexConfig): Promise<void> {
   if (!changed) return
   const text = doc.toString()
   // abort before touching disk if the edit produced invalid TOML
-  parse(text)
-  await mkdir(dirname(CODEX_FILE), { recursive: true })
-  await writeFile(CODEX_FILE, text)
-}
-
-async function loadDoc(): Promise<TomlDoc> {
-  const raw = await readFile(CODEX_FILE, 'utf8').catch((error) => {
-    if (error.code === 'ENOENT') return ''
-    throw error
+  yield* Effect.try({
+    try: () => parse(text),
+    catch: (cause) => new CodexConfigError({ message: `Edit produced invalid TOML: ${cause}` })
   })
+  yield* fs.makeDirectory(dirname(CODEX_FILE), { recursive: true })
+  yield* fs.writeFileString(CODEX_FILE, text)
+})
+
+const loadDoc = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const raw = yield* fs.readFileString(CODEX_FILE).pipe(orElseNotFound(''))
   return new TomlDoc(raw)
-}
+})
 
 function toConfig(doc: TomlDoc): CodexConfig {
   // SAFETY: fromEntries over the complete field lists yields every key.

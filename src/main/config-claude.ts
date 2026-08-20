@@ -1,9 +1,9 @@
-import { mkdir, readFile, writeFile } from 'fs/promises'
+import { Effect, FileSystem, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import type { z } from 'zod'
 import { CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS } from '../shared/config'
 import { configDraftSchema } from './config-draft'
+import { orElseNotFound } from './runtime'
 
 export const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
 
@@ -17,8 +17,14 @@ type ClaudeFeatureSettingKey = Extract<
 >['key']
 
 const claudeDraft = configDraftSchema(CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS)
+const decodeDraft = Schema.decodeUnknownEffect(claudeDraft)
 
-export type ClaudeConfig = z.infer<typeof claudeDraft>
+export type ClaudeConfig = (typeof claudeDraft)['Type']
+
+export class ClaudeSettingsError extends Schema.TaggedError<ClaudeSettingsError>()(
+  'ClaudeSettingsError',
+  { message: Schema.String }
+) {}
 
 // ~/.claude/settings.json holds much more than the managed toggles
 // (permissions, hooks, user-set env vars). The declared type covers only the
@@ -34,15 +40,16 @@ type ClaudeSettings = { env?: Record<string, string> } & {
   [K in ClaudeFeatureSettingKey]?: boolean
 }
 
-export async function loadClaudeConfig(): Promise<ClaudeConfig> {
-  return toConfig(await loadSettings())
-}
+export const loadClaudeConfig = Effect.gen(function* () {
+  return toConfig(yield* loadSettings)
+})
 
 // Parses the untrusted IPC draft against the catalog schema, then writes
-// changed entries in one pass; throws before touching disk.
-export async function saveClaudeConfig(values: ClaudeConfig): Promise<void> {
-  const next = claudeDraft.parse(values)
-  const settings = await loadSettings()
+// changed entries in one pass; fails before touching disk.
+export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (values: ClaudeConfig) {
+  const next = yield* decodeDraft(values)
+  const fs = yield* FileSystem.FileSystem
+  const settings = yield* loadSettings
   const current = toConfig(settings)
   const env = { ...settings.env }
   let changed = false
@@ -79,31 +86,33 @@ export async function saveClaudeConfig(values: ClaudeConfig): Promise<void> {
   if (!changed) return
   if (Object.keys(env).length > 0) settings.env = env
   else delete settings.env
-  await mkdir(dirname(CLAUDE_FILE), { recursive: true })
-  await writeFile(CLAUDE_FILE, JSON.stringify(settings, null, 2) + '\n')
-}
+  yield* fs.makeDirectory(dirname(CLAUDE_FILE), { recursive: true })
+  yield* fs.writeFileString(CLAUDE_FILE, JSON.stringify(settings, null, 2) + '\n')
+})
 
-async function loadSettings(): Promise<ClaudeSettings> {
-  const raw = await readFile(CLAUDE_FILE, 'utf8').catch((error) => {
-    if (error.code === 'ENOENT') return ''
-    throw error
+const loadSettings = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const raw = yield* fs.readFileString(CLAUDE_FILE).pipe(orElseNotFound(''))
+  const empty: ClaudeSettings = {}
+  if (raw.trim() === '') return empty
+  const parsed: unknown = yield* Effect.try({
+    try: () => JSON.parse(raw),
+    catch: (cause) => new ClaudeSettingsError({ message: `Malformed settings.json: ${cause}` })
   })
-  if (raw.trim() === '') return {}
   // Reject a mis-shaped file here so a later save can never rewrite it from
   // scratch or corrupt it by spreading a non-object env. Object() returns its
   // argument only for objects, rejecting every JSON primitive.
-  const parsed: unknown = JSON.parse(raw)
   if (Object(parsed) !== parsed || Array.isArray(parsed)) {
-    throw new Error('Unsupported settings.json shape')
+    return yield* new ClaudeSettingsError({ message: 'Unsupported settings.json shape' })
   }
-  // SAFETY: the root is a plain object per the check above and env is checked
-  // next; the declared type covers only the managed slice of the file.
+  // SAFETY: the root is a plain object per the check above and env is
+  // checked next; the declared type covers only the managed slice.
   const settings = parsed as ClaudeSettings
   if (
     settings.env !== undefined &&
     (Object(settings.env) !== settings.env || Array.isArray(settings.env))
   ) {
-    throw new Error('Unsupported settings.json env shape')
+    return yield* new ClaudeSettingsError({ message: 'Unsupported settings.json env shape' })
   }
   // Parse the managed keys here so the rest of the module can trust the
   // declared types; a wrong-representation hand edit counts as unset.
@@ -130,7 +139,7 @@ async function loadSettings(): Promise<ClaudeSettings> {
     }
   }
   return settings
-}
+})
 
 function toConfig(settings: ClaudeSettings): ClaudeConfig {
   // Claude Code reads the provider entries like `process.env.X || fallback`,

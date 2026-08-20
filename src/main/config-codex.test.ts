@@ -2,9 +2,13 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
+import type { CodexConfig } from './config-codex'
+import { runtime } from './runtime'
 
 let api: typeof import('./config-codex')
 let file: string
+const load = (): Promise<CodexConfig> => runtime.runPromise(api.loadCodexConfig)
+const save = (values: CodexConfig): Promise<void> => runtime.runPromise(api.saveCodexConfig(values))
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'codex-home-'))
@@ -17,7 +21,7 @@ beforeAll(async () => {
 })
 
 test('a missing config file loads pure defaults', async () => {
-  const config = await api.loadCodexConfig()
+  const config = await load()
   expect(config.agent.model_reasoning_effort).toBe('medium')
   expect(config.agent.sandbox_mode).toBe('workspace-write')
   expect(config.features).toMatchObject({ apps: true, memories: false })
@@ -37,11 +41,11 @@ test('save rewrites only changed entries; hand edits and comments survive', asyn
       ''
     ].join('\n')
   )
-  const config = await api.loadCodexConfig()
+  const config = await load()
   expect(config.agent.model_reasoning_effort).toBe('low')
   expect(config.features.apps).toBe(false)
 
-  await api.saveCodexConfig({
+  await save({
     ...config,
     agent: { ...config.agent, model_reasoning_effort: 'high' },
     features: { ...config.features, memories: true }
@@ -62,26 +66,26 @@ test('save rewrites only changed entries; hand edits and comments survive', asyn
 
 test('an out-of-catalog draft value throws before touching disk', async () => {
   const before = await readFile(file, 'utf8')
-  const config = await api.loadCodexConfig()
+  const config = await load()
   await expect(
-    api.saveCodexConfig({ ...config, agent: { ...config.agent, model_reasoning_effort: 'turbo' } })
+    save({ ...config, agent: { ...config.agent, model_reasoning_effort: 'turbo' } })
   ).rejects.toThrow('Unsupported model_reasoning_effort value: turbo')
   expect(await readFile(file, 'utf8')).toBe(before)
 })
 
 test('an unrecognized hand-set value loads as null and survives saves', async () => {
   await writeFile(file, 'model_reasoning_effort = "turbo"\n')
-  const config = await api.loadCodexConfig()
+  const config = await load()
   expect(config.agent.model_reasoning_effort).toBeNull()
   // null means "leave the file value alone"
-  await api.saveCodexConfig({ ...config, features: { ...config.features, memories: true } })
+  await save({ ...config, features: { ...config.features, memories: true } })
   expect(await readFile(file, 'utf8')).toContain('model_reasoning_effort = "turbo"')
 })
 
 test('enabling the provider writes the selector, table, and compression override', async () => {
-  const config = await api.loadCodexConfig()
+  const config = await load()
   const provider = { enabled: true, baseUrl: 'https://proxy.test/v1', apiKey: 'sk-test' }
-  await api.saveCodexConfig({ ...config, provider })
+  await save({ ...config, provider })
   const text = await readFile(file, 'utf8')
   expect(text).toContain('model_provider = "revolt"')
   expect(text).toContain('[model_providers.revolt]')
@@ -89,17 +93,17 @@ test('enabling the provider writes the selector, table, and compression override
   expect(text).toContain('wire_api = "responses"')
   expect(text).toContain('experimental_bearer_token = "sk-test"')
   expect(text).toContain('enable_request_compression = false')
-  expect((await api.loadCodexConfig()).provider).toEqual(provider)
+  expect((await load()).provider).toEqual(provider)
 })
 
 test('disabling the provider keeps credentials but drops selector and override', async () => {
-  const config = await api.loadCodexConfig()
-  await api.saveCodexConfig({ ...config, provider: { ...config.provider, enabled: false } })
+  const config = await load()
+  await save({ ...config, provider: { ...config.provider, enabled: false } })
   const text = await readFile(file, 'utf8')
   expect(text).not.toContain('model_provider = "revolt"')
   expect(text).not.toContain('enable_request_compression')
   expect(text).toContain('[model_providers.revolt]')
-  const reloaded = await api.loadCodexConfig()
+  const reloaded = await load()
   expect(reloaded.provider).toEqual({
     enabled: false,
     baseUrl: 'https://proxy.test/v1',
@@ -109,12 +113,12 @@ test('disabling the provider keeps credentials but drops selector and override',
 
 test('provider validation rejects incomplete or unquotable values', async () => {
   const before = await readFile(file, 'utf8')
-  const config = await api.loadCodexConfig()
+  const config = await load()
   await expect(
-    api.saveCodexConfig({ ...config, provider: { enabled: true, baseUrl: '', apiKey: 'sk' } })
+    save({ ...config, provider: { enabled: true, baseUrl: '', apiKey: 'sk' } })
   ).rejects.toThrow('Enabled provider needs a base URL and an API key')
   await expect(
-    api.saveCodexConfig({
+    save({
       ...config,
       provider: { enabled: true, baseUrl: 'https://x.test/"v1', apiKey: 'sk' }
     })

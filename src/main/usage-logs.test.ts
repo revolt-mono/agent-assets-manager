@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'fs/promises'
+import { mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
@@ -60,7 +60,7 @@ test('claude log: valid assistant lines become events, split cache is honored', 
     }),
     claudeLine({}) // no cache_creation split
   ])
-  const events = await claudeSource.parse(file)
+  const events = claudeSource.parse(await readFile(file))
   expect(events).toHaveLength(2)
   expect(events[0]).toMatchObject({
     agent: 'claude',
@@ -103,7 +103,7 @@ test('claude log: malformed or incomplete lines are dropped, not fatal', async (
     }),
     claudeLine({})
   ])
-  const events = await claudeSource.parse(file)
+  const events = claudeSource.parse(await readFile(file))
   expect(events).toHaveLength(1)
   expect(events[0].input).toBe(100)
 })
@@ -112,7 +112,7 @@ test('claude log: parses a final line without a newline', async () => {
   const file = join(dir, 'unterminated.jsonl')
   await writeFile(file, claudeLine({}))
 
-  const events = await claudeSource.parse(file)
+  const events = claudeSource.parse(await readFile(file))
 
   expect(events).toHaveLength(1)
   expect(events[0].input).toBe(100)
@@ -179,7 +179,7 @@ test('codex log: model comes from session meta, repeats of the same total are dr
       { input: 100, cached: 400, output: 10 }
     )
   ])
-  const events = await codexSource.parse(file)
+  const events = codexSource.parse(await readFile(file))
   expect(events).toHaveLength(2)
   expect(events[0]).toMatchObject({
     agent: 'codex',
@@ -202,5 +202,5 @@ test('codex log: token counts before any model line are dropped', async () => {
       { input: 100, cached: 0, output: 5 }
     )
   ])
-  expect(await codexSource.parse(file)).toEqual([])
+  expect(codexSource.parse(await readFile(file))).toEqual([])
 })

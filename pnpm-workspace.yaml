@@ -2,3 +2,6 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   esbuild: true
+  # optional native accelerator pulled in transitively by @effect/platform-node;
+  # msgpackr falls back to its pure-js path without it
+  msgpackr-extract: false

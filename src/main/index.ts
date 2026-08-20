@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerConfig } from './config'
+import { runtime } from './runtime'
 import { registerSkills } from './skills'
 import { registerUpdater } from './updater'
 import { registerUsage } from './usage'
@@ -98,6 +99,7 @@ app.whenReady().then(() => {
   app.on('will-quit', () => {
     stopSkills()
     stopConfig()
+    void runtime.dispose()
   })
 
   createWindow()

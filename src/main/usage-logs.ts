@@ -1,5 +1,4 @@
-import { readFile } from 'fs/promises'
-import { z } from 'zod'
+import { Effect, Option, Schema } from 'effect'
 import type { AgentId } from '../shared/agent'
 
 // One request's token usage recovered from an agent's session log; pricing
@@ -21,7 +20,7 @@ export type UsageEvent = {
 const isCodexLog = (name: string): boolean => name.startsWith('rollout-') && name.endsWith('.jsonl')
 
 // Roots are segments under the home directory, resolved per sweep so nothing
-// freezes homedir() at import time.
+// freezes homedir() at import time. Parsers are pure so the sweep owns all io.
 export const LOG_SOURCES = [
   {
     root: ['.claude', 'projects'],
@@ -33,13 +32,16 @@ export const LOG_SOURCES = [
 ]
 
 // Scans bytes so irrelevant log lines never become JS strings. Parsed JSON
-// stays unknown until a source parser validates and constructs a usage event.
-function* jsonLines(data: Buffer, needles: readonly Buffer[]): Generator<unknown> {
+// stays unknown until a source schema validates it.
+function* jsonLines(data: Uint8Array, needles: readonly Buffer[]): Generator<unknown> {
+  const bytes = Buffer.isBuffer(data)
+    ? data
+    : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
   let start = 0
-  while (start < data.length) {
-    const newline = data.indexOf(10, start)
-    const end = newline === -1 ? data.length : newline
-    const line = data.subarray(start, end)
+  while (start < bytes.length) {
+    const newline = bytes.indexOf(10, start)
+    const end = newline === -1 ? bytes.length : newline
+    const line = bytes.subarray(start, end)
     start = end + 1
     if (!needles.some((needle) => line.includes(needle))) continue
     try {
@@ -56,52 +58,55 @@ const CODEX_NEEDLES = ['session_meta', 'turn_context', 'token_count'].map((value
   Buffer.from(value)
 )
 
-const tokenCount = z.number().int().nonnegative().safe()
+const tokenCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const modelField = Schema.optional(Schema.NullOr(Schema.String))
 
-const claudeLine = z.object({
-  type: z.literal('assistant'),
-  requestId: z.string(),
-  timestamp: z.string(),
-  message: z.object({
-    id: z.string(),
-    model: z.string(),
-    usage: z.object({
+const claudeLine = Schema.Struct({
+  type: Schema.Literal('assistant'),
+  requestId: Schema.String,
+  timestamp: Schema.String,
+  message: Schema.Struct({
+    id: Schema.String,
+    model: Schema.String,
+    usage: Schema.Struct({
       input_tokens: tokenCount,
       output_tokens: tokenCount,
       cache_read_input_tokens: tokenCount,
       cache_creation_input_tokens: tokenCount,
-      cache_creation: z
-        .object({
-          ephemeral_5m_input_tokens: tokenCount,
-          ephemeral_1h_input_tokens: tokenCount
-        })
-        .nullish()
+      cache_creation: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            ephemeral_5m_input_tokens: tokenCount,
+            ephemeral_1h_input_tokens: tokenCount
+          })
+        )
+      )
     })
   })
 })
 
-const codexTokenUsage = z.object({
+const codexTokenUsage = Schema.Struct({
   input_tokens: tokenCount,
   cached_input_tokens: tokenCount,
-  cache_write_input_tokens: tokenCount.default(0),
+  cache_write_input_tokens: tokenCount.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   output_tokens: tokenCount
 })
 
-const codexRecord = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('session_meta'),
-    payload: z.object({ model: z.string().nullish() })
+const codexRecord = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('session_meta'),
+    payload: Schema.Struct({ model: modelField })
   }),
-  z.object({
-    type: z.literal('turn_context'),
-    payload: z.object({ model: z.string().nullish() })
+  Schema.Struct({
+    type: Schema.Literal('turn_context'),
+    payload: Schema.Struct({ model: modelField })
   }),
-  z.object({
-    type: z.literal('event_msg'),
-    timestamp: z.string(),
-    payload: z.object({
-      type: z.literal('token_count'),
-      info: z.object({
+  Schema.Struct({
+    type: Schema.Literal('event_msg'),
+    timestamp: Schema.String,
+    payload: Schema.Struct({
+      type: Schema.Literal('token_count'),
+      info: Schema.Struct({
         total_token_usage: codexTokenUsage,
         last_token_usage: codexTokenUsage
       })
@@ -109,12 +114,15 @@ const codexRecord = z.discriminatedUnion('type', [
   })
 ])
 
-async function parseClaudeLog(file: string): Promise<UsageEvent[]> {
+const decodeClaudeLine = Schema.decodeUnknownOption(claudeLine)
+const decodeCodexRecord = Schema.decodeUnknownOption(codexRecord)
+
+function parseClaudeLog(data: Uint8Array): UsageEvent[] {
   const events: UsageEvent[] = []
-  for (const raw of jsonLines(await readFile(file), CLAUDE_NEEDLES)) {
-    const parsed = claudeLine.safeParse(raw)
-    if (!parsed.success) continue
-    const entry = parsed.data
+  for (const raw of jsonLines(data, CLAUDE_NEEDLES)) {
+    const parsed = decodeClaudeLine(raw)
+    if (Option.isNone(parsed)) continue
+    const entry = parsed.value
     const message = entry.message
     if (message.model === '<synthetic>') continue
     const usage = message.usage
@@ -136,14 +144,14 @@ async function parseClaudeLog(file: string): Promise<UsageEvent[]> {
   return events
 }
 
-async function parseCodexLog(file: string): Promise<UsageEvent[]> {
+function parseCodexLog(data: Uint8Array): UsageEvent[] {
   const events: UsageEvent[] = []
   let model: string | null = null
   let previousTotal: string | null = null
-  for (const raw of jsonLines(await readFile(file), CODEX_NEEDLES)) {
-    const parsed = codexRecord.safeParse(raw)
-    if (!parsed.success) continue
-    const record = parsed.data
+  for (const raw of jsonLines(data, CODEX_NEEDLES)) {
+    const parsed = decodeCodexRecord(raw)
+    if (Option.isNone(parsed)) continue
+    const record = parsed.value
     if (record.type === 'session_meta' || record.type === 'turn_context') {
       if (record.payload.model != null) model = record.payload.model
       continue

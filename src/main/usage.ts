@@ -1,8 +1,9 @@
-import { readdir, stat } from 'fs/promises'
+import { Effect, FileSystem, Option } from 'effect'
 import { homedir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { ipcMain } from 'electron'
 import { MAX_RANGE_DAYS, type UsageBucket } from '../shared/usage'
+import { runtime } from './runtime'
 import { LOG_SOURCES, type UsageEvent } from './usage-logs'
 
 // Built-in price table, USD per million tokens.
@@ -62,63 +63,61 @@ const ALIASES = new Map<string, string>([
   ['fable', 'claude-fable-5']
 ])
 
-async function filesUnder(root: string, match: (name: string) => boolean): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true, recursive: true })
-    return entries
-      .filter((entry) => entry.isFile() && match(entry.name))
-      .map((entry) => join(entry.parentPath, entry.name))
-  } catch {
-    return [] // directory does not exist
-  }
-}
+const filesUnder = Effect.fn('filesUnder')(
+  function* (root: string, match: (name: string) => boolean) {
+    const fs = yield* FileSystem.FileSystem
+    const entries = yield* fs.readDirectory(root, { recursive: true })
+    return entries.filter((entry) => match(basename(entry))).map((entry) => join(root, entry))
+  },
+  // missing directory (or any listing failure) reads as no files
+  Effect.orElseSucceed(() => [])
+)
 
-type CachedFile = { mtimeMs: number; size: number; events: UsageEvent[] }
+type CachedFile = { mtimeMs: number; size: bigint; events: UsageEvent[] }
 
 // One sweep over every log source: unchanged files come from the cache, the
 // rest are re-parsed. Returns the fresh cache so deleted files fall out.
-async function sweepLogs(
-  cache: ReadonlyMap<string, CachedFile>
-): Promise<{ events: UsageEvent[]; cache: Map<string, CachedFile> }> {
+const sweepLogs = Effect.fn('sweepLogs')(function* (cache: ReadonlyMap<string, CachedFile>) {
+  const fs = yield* FileSystem.FileSystem
   const next = new Map<string, CachedFile>()
   // One extra day past the widest UI range covers timezone and daylight-saving
   // boundaries before the renderer filters timestamps.
   const oldestFileMtime = Date.now() - (MAX_RANGE_DAYS + 1) * 24 * 60 * 60 * 1000
-  const lists = await Promise.all(
-    LOG_SOURCES.map(async (source) => {
-      const files = await filesUnder(join(homedir(), ...source.root), source.match)
+  const lists = yield* Effect.forEach(
+    LOG_SOURCES,
+    Effect.fn(function* (source) {
+      const files = yield* filesUnder(join(homedir(), ...source.root), source.match)
+      // Concurrency is capped so a large log history cannot exhaust file
+      // descriptors.
+      const entries = yield* Effect.forEach(
+        files,
+        Effect.fn(function* (file) {
+          const info = yield* fs.stat(file).pipe(Effect.orElseSucceed(() => null))
+          if (info === null || info.type !== 'File') return null
+          const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
+          if (mtimeMs < oldestFileMtime) return null
+          const hit = cache.get(file)
+          if (hit && hit.mtimeMs === mtimeMs && hit.size === info.size) return [file, hit] as const
+          // transient read failure: retry next sweep
+          const data = yield* fs.readFile(file).pipe(Effect.orElseSucceed(() => null))
+          if (data === null) return null
+          return [file, { mtimeMs, size: info.size, events: source.parse(data) }] as const
+        }),
+        { concurrency: 32 }
+      )
       const events: UsageEvent[] = []
-      // Chunked so a large log history cannot exhaust file descriptors.
-      for (let start = 0; start < files.length; start += 32) {
-        const entries = await Promise.all(
-          files.slice(start, start + 32).map(async (file): Promise<[string, CachedFile] | null> => {
-            const info = await stat(file).catch(() => null)
-            if (!info) return null
-            if (info.mtimeMs < oldestFileMtime) return null
-            const hit = cache.get(file)
-            if (hit && hit.mtimeMs === info.mtimeMs && hit.size === info.size) return [file, hit]
-            try {
-              return [
-                file,
-                { mtimeMs: info.mtimeMs, size: info.size, events: await source.parse(file) }
-              ]
-            } catch {
-              return null // transient read failure: retry next sweep
-            }
-          })
-        )
-        for (const item of entries) {
-          if (!item) continue
-          const [file, entry] = item
-          next.set(file, entry)
-          for (const event of entry.events) events.push(event)
-        }
+      for (const item of entries) {
+        if (!item) continue
+        const [file, entry] = item
+        next.set(file, entry)
+        for (const event of entry.events) events.push(event)
       }
       return events
-    })
+    }),
+    { concurrency: 'unbounded' }
   )
   return { events: lists.flat(), cache: next }
-}
+})
 
 function report(events: UsageEvent[]): UsageBucket[] {
   const buckets = new Map<string, UsageBucket>()
@@ -162,10 +161,13 @@ export function registerUsage(): void {
   // grows, so parsed events are cached per file and re-read only when mtime
   // or size changes.
   let cache = new Map<string, CachedFile>()
-  ipcMain.handle('usage:get', async (_event, fresh: boolean) => {
+  ipcMain.handle('usage:get', (_event, fresh: boolean) => {
     if (fresh === true) cache = new Map()
-    const swept = await sweepLogs(cache)
-    cache = swept.cache
-    return report(swept.events)
+    return runtime.runPromise(
+      Effect.map(sweepLogs(cache), (swept) => {
+        cache = swept.cache
+        return report(swept.events)
+      })
+    )
   })
 }
