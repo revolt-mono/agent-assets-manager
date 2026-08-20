@@ -27,7 +27,7 @@ const PAGES = [
 type PageId = (typeof PAGES)[number]['id']
 
 function App(): React.JSX.Element {
-  const [page, setPage] = useState<PageId>('skills')
+  const [page, setPage] = useState<PageId>('config')
 
   return (
     <SidebarProvider className="h-svh overflow-hidden">
