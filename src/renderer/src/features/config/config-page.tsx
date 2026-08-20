@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { type Cause, Effect } from 'effect'
 import { InformationCircleIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Button } from '@renderer/components/ui/button'
@@ -85,7 +84,6 @@ type ConfigEditor = {
   draft: AgentConfigValues | undefined
   dirty: boolean
   patch: (update: (draft: AgentConfigValues) => AgentConfigValues) => void
-  save: Effect.Effect<void, Cause.UnknownError>
 }
 
 function useConfigEditor(agent: AgentId): ConfigEditor {
@@ -100,8 +98,7 @@ function useConfigEditor(agent: AgentId): ConfigEditor {
     dirty: draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved),
     patch: (update) => {
       if (saved && draft) setEdit({ base: saved, draft: update(draft) })
-    },
-    save: draft ? saveConfig(agent, draft) : Effect.void
+    }
   }
 }
 
@@ -115,17 +112,16 @@ export function ConfigPage(): React.JSX.Element {
   const [justSaved, setJustSaved] = useState<AgentId | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  const save = (): void => {
-    Effect.runFork(
-      Effect.match(active.save, {
-        onSuccess: () => {
-          setJustSaved(agent)
-          clearTimeout(resetTimer.current)
-          resetTimer.current = setTimeout(() => setJustSaved(null), 2000)
-        },
-        onFailure: () => toast.add({ title: 'Could not save config', type: 'error' })
-      })
-    )
+  const save = async (): Promise<void> => {
+    if (!active.draft) return
+    try {
+      await saveConfig(agent, active.draft)
+      setJustSaved(agent)
+      clearTimeout(resetTimer.current)
+      resetTimer.current = setTimeout(() => setJustSaved(null), 2000)
+    } catch {
+      toast.add({ title: 'Could not save config', type: 'error' })
+    }
   }
 
   const showSaved = justSaved === agent && !active.dirty
@@ -149,7 +145,7 @@ export function ConfigPage(): React.JSX.Element {
             <Button
               size="sm"
               disabled={!active.dirty}
-              onClick={() => void save()}
+              onClick={save}
               className={cn(
                 'w-full text-white',
                 showSaved

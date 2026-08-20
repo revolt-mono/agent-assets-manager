@@ -1,4 +1,3 @@
-import { Effect } from 'effect'
 import { BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater'
@@ -58,11 +57,7 @@ export function registerUpdater(): void {
     if (state.status === 'available') {
       const version = state.version
       setState({ status: 'downloading', version, percent: 0 })
-      Effect.runFork(
-        Effect.tryPromise(() => autoUpdater.downloadUpdate()).pipe(
-          Effect.catch(() => Effect.sync(() => setState({ status: 'available', version })))
-        )
-      )
+      void autoUpdater.downloadUpdate().catch(() => setState({ status: 'available', version }))
     } else if (state.status === 'downloaded') {
       autoUpdater.quitAndInstall()
     }
@@ -87,7 +82,7 @@ export function registerUpdater(): void {
   })
   const check = (): void => {
     if (state.status === 'downloading' || state.status === 'downloaded') return
-    Effect.runFork(Effect.ignore(Effect.tryPromise(() => autoUpdater.checkForUpdates())))
+    void autoUpdater.checkForUpdates().catch(() => undefined)
   }
   check()
   setInterval(check, CHECK_INTERVAL_MS)

@@ -1,4 +1,3 @@
-import { Effect } from 'effect'
 import { toast } from '@renderer/components/ui/toast'
 import { createStore, latestWins, useStore } from '@renderer/lib/store'
 import type { AgentId } from '@shared/agent'
@@ -10,30 +9,21 @@ export type SkillsState =
   | { kind: 'loaded'; skills: Record<AgentId, Skill[]> }
 
 const store = createStore<SkillsState>({ kind: 'blank' }, revalidate)
-// A newer revalidate interrupts the in-flight one, so its results (and
+// A newer revalidate supersedes the in-flight one, so its results (and
 // error toasts) are discarded.
 const inflight = latestWins()
 
-const listSkills = (agent: AgentId) =>
-  Effect.tryPromise(() => window.api.skills.list(agent)).pipe(
-    Effect.catch(() =>
-      Effect.sync((): Skill[] => {
-        toast.add({ title: 'Could not load skills', type: 'error' })
-        return []
-      })
-    )
-  )
-
-const loadAll = Effect.gen(function* () {
-  const skills = yield* Effect.all(
-    { claude: listSkills('claude'), codex: listSkills('codex') },
-    { concurrency: 'unbounded' }
-  )
-  store.set({ kind: 'loaded', skills })
-})
+const listSkills = (agent: AgentId): Promise<Skill[] | null> =>
+  window.api.skills.list(agent).catch(() => null)
 
 function revalidate(): void {
-  inflight.fork(loadAll)
+  void inflight.run(
+    () => Promise.all([listSkills('claude'), listSkills('codex')]),
+    ([claude, codex]) => {
+      if (!claude || !codex) toast.add({ title: 'Could not load skills', type: 'error' })
+      store.set({ kind: 'loaded', skills: { claude: claude ?? [], codex: codex ?? [] } })
+    }
+  )
 
   // only the very first load shows a skeleton, and only once it feels slow
   setTimeout(() => {

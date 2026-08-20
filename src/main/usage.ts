@@ -63,16 +63,6 @@ const ALIASES = new Map<string, string>([
   ['fable', 'claude-fable-5']
 ])
 
-const filesUnder = Effect.fn('filesUnder')(
-  function* (root: string, match: (name: string) => boolean) {
-    const fs = yield* FileSystem.FileSystem
-    const entries = yield* fs.readDirectory(root, { recursive: true })
-    return entries.filter((entry) => match(basename(entry))).map((entry) => join(root, entry))
-  },
-  // missing directory (or any listing failure) reads as no files
-  Effect.orElseSucceed(() => [])
-)
-
 type CachedFile = { mtimeMs: number; size: bigint; events: UsageEvent[] }
 
 // One sweep over every log source: unchanged files come from the cache, the
@@ -85,35 +75,47 @@ const sweepLogs = Effect.fn('sweepLogs')(function* (cache: ReadonlyMap<string, C
   const oldestFileMtime = Date.now() - (MAX_RANGE_DAYS + 1) * 24 * 60 * 60 * 1000
   const lists = yield* Effect.forEach(
     LOG_SOURCES,
-    Effect.fn(function* (source) {
-      const files = yield* filesUnder(join(homedir(), ...source.root), source.match)
-      // Concurrency is capped so a large log history cannot exhaust file
-      // descriptors.
-      const entries = yield* Effect.forEach(
-        files,
-        Effect.fn(function* (file) {
-          const info = yield* fs.stat(file).pipe(Effect.orElseSucceed(() => null))
-          if (info === null || info.type !== 'File') return null
-          const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
-          if (mtimeMs < oldestFileMtime) return null
-          const hit = cache.get(file)
-          if (hit && hit.mtimeMs === mtimeMs && hit.size === info.size) return [file, hit] as const
-          // transient read failure: retry next sweep
-          const data = yield* fs.readFile(file).pipe(Effect.orElseSucceed(() => null))
-          if (data === null) return null
-          return [file, { mtimeMs, size: info.size, events: source.parse(data) }] as const
-        }),
-        { concurrency: 32 }
-      )
-      const events: UsageEvent[] = []
-      for (const item of entries) {
-        if (!item) continue
-        const [file, entry] = item
-        next.set(file, entry)
-        for (const event of entry.events) events.push(event)
-      }
-      return events
-    }),
+    (source) =>
+      Effect.gen(function* () {
+        const root = join(homedir(), ...source.root)
+        const files = yield* fs.readDirectory(root, { recursive: true }).pipe(
+          Effect.map((entries) =>
+            entries
+              .filter((entry) => source.match(basename(entry)))
+              .map((entry) => join(root, entry))
+          ),
+          // missing directory (or any listing failure) reads as no files
+          Effect.orElseSucceed(() => [])
+        )
+        // Concurrency is capped so a large log history cannot exhaust file
+        // descriptors.
+        const entries = yield* Effect.forEach(
+          files,
+          (file) =>
+            Effect.gen(function* () {
+              const info = yield* fs.stat(file).pipe(Effect.orElseSucceed(() => null))
+              if (info === null || info.type !== 'File') return null
+              const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
+              if (mtimeMs < oldestFileMtime) return null
+              const hit = cache.get(file)
+              if (hit && hit.mtimeMs === mtimeMs && hit.size === info.size)
+                return [file, hit] as const
+              // transient read failure: retry next sweep
+              const data = yield* fs.readFile(file).pipe(Effect.orElseSucceed(() => null))
+              if (data === null) return null
+              return [file, { mtimeMs, size: info.size, events: source.parse(data) }] as const
+            }),
+          { concurrency: 32 }
+        )
+        const events: UsageEvent[] = []
+        for (const item of entries) {
+          if (!item) continue
+          const [file, entry] = item
+          next.set(file, entry)
+          for (const event of entry.events) events.push(event)
+        }
+        return events
+      }),
     { concurrency: 'unbounded' }
   )
   return { events: lists.flat(), cache: next }

@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from 'react'
-import { Effect, type Fiber } from 'effect'
 
 export type Store<T> = {
   get: () => T
@@ -33,24 +32,29 @@ export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get)
 }
 
-// Latest wins: forking interrupts the in-flight fiber, so a stale result (or
-// its error handling) can never land after a fresher one. Shared so every
-// feature store gets the same cancellation semantics.
-export type Latest = {
-  fork: (effect: Effect.Effect<void>) => Fiber.Fiber<void>
-  interrupt: () => void
-}
+// IPC promises cannot be aborted, so a generation suppresses stale callbacks.
+export function latestWins() {
+  let latest = 0
 
-export function latestWins(): Latest {
-  let inflight: Fiber.Fiber<void> | undefined
-  return {
-    fork: (effect) => {
-      inflight?.interruptUnsafe()
-      inflight = Effect.runFork(effect)
-      return inflight
-    },
-    interrupt: () => {
-      inflight?.interruptUnsafe()
+  async function run<T>(
+    task: () => Promise<T>,
+    onSuccess: (value: T) => void,
+    onFailure?: () => void
+  ): Promise<void> {
+    const generation = ++latest
+    let value: T
+    try {
+      value = await task()
+    } catch {
+      if (generation === latest) onFailure?.()
+      return
     }
+    if (generation === latest) onSuccess(value)
   }
+
+  function cancel(): void {
+    latest++
+  }
+
+  return { run, cancel }
 }

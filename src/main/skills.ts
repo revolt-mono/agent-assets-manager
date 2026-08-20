@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Option, Schema } from 'effect'
+import { Data, Effect, FileSystem, Option } from 'effect'
 import { watch, type FSWatcher } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
@@ -11,9 +11,9 @@ import { orElseNotFound, runtime } from './runtime'
 const SKILL_FILE = 'SKILL.md'
 const ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
 
-export class SkillError extends Schema.TaggedError<SkillError>()('SkillError', {
-  message: Schema.String
-}) {}
+class SkillError extends Data.TaggedError('SkillError')<{
+  readonly message: string
+}> {}
 
 // One skill folder read off disk: the listing entry plus everything the
 // per-skill IPC handlers need (paths and the parsed body).
@@ -116,14 +116,14 @@ const openSkill = Effect.fn('openSkill')(function* (agent: AgentId, id: string) 
   if (error) return yield* new SkillError({ message: error })
 })
 
-const requireSkill = Effect.fn('requireSkill')(function* (agent: AgentId, id: string) {
+const requireSkill = Effect.fnUntraced(function* (agent: AgentId, id: string) {
   if (!ID_PATTERN.test(id)) return yield* new SkillError({ message: `Invalid skill id: ${id}` })
   const loaded = yield* readSkill(agent, id)
   if (!loaded) return yield* new SkillError({ message: `Skill not found: ${id}` })
   return loaded
 })
 
-const readSkill = Effect.fn('readSkill')(
+const readSkill = Effect.fnUntraced(
   function* (agent: AgentId, id: string) {
     const fs = yield* FileSystem.FileSystem
     const dir = join(skillsRoot(agent), id)

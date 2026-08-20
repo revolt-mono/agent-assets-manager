@@ -1,5 +1,4 @@
 import { Suspense, use, useState } from 'react'
-import { Effect } from 'effect'
 import {
   Cancel01Icon,
   Copy01Icon,
@@ -97,34 +96,38 @@ function SkillDetailContent({
   const [confirmUninstall, setConfirmUninstall] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const copyMarkdown = Effect.gen(function* () {
-    const loaded = yield* Effect.promise(() => body)
-    if (!loaded) return
-    // the clipboard write can reject (focus lost, permission denied)
-    yield* Effect.tryPromise(() => navigator.clipboard.writeText(loaded.raw))
-    toast.add({ title: 'Copied markdown', type: 'success' })
-  }).pipe(
-    Effect.catch(() => Effect.sync(() => toast.add({ title: 'Could not copy', type: 'error' })))
-  )
+  const copyMarkdown = async (): Promise<void> => {
+    try {
+      const loaded = await body
+      if (!loaded) return
+      await navigator.clipboard.writeText(loaded.raw)
+      toast.add({ title: 'Copied markdown', type: 'success' })
+    } catch {
+      toast.add({ title: 'Could not copy', type: 'error' })
+    }
+  }
 
-  const openInEditor = Effect.tryPromise(() => window.api.skills.open(skill.agent, skill.id)).pipe(
-    Effect.catch(() =>
-      Effect.sync(() => toast.add({ title: 'Could not open skill', type: 'error' }))
-    )
-  )
+  const openInEditor = async (): Promise<void> => {
+    try {
+      await window.api.skills.open(skill.agent, skill.id)
+    } catch {
+      toast.add({ title: 'Could not open skill', type: 'error' })
+    }
+  }
 
-  const uninstall = Effect.gen(function* () {
+  const uninstall = async (): Promise<void> => {
     setBusy(true)
-    yield* Effect.tryPromise(() => window.api.skills.uninstall(skill.agent, skill.id))
-    setConfirmUninstall(false)
-    onClose()
-    toast.add({ title: `Uninstalled ${skill.name}`, type: 'success' })
-  }).pipe(
-    Effect.catch(() =>
-      Effect.sync(() => toast.add({ title: 'Could not uninstall skill', type: 'error' }))
-    ),
-    Effect.ensuring(Effect.sync(() => setBusy(false)))
-  )
+    try {
+      await window.api.skills.uninstall(skill.agent, skill.id)
+      setConfirmUninstall(false)
+      onClose()
+      toast.add({ title: `Uninstalled ${skill.name}`, type: 'success' })
+    } catch {
+      toast.add({ title: 'Could not uninstall skill', type: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <>
@@ -152,7 +155,7 @@ function SkillDetailContent({
                 <HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
                 {REVEAL_LABEL}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => Effect.runFork(copyMarkdown)}>
+              <DropdownMenuItem onClick={copyMarkdown}>
                 <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} />
                 Copy Markdown
               </DropdownMenuItem>
@@ -178,7 +181,7 @@ function SkillDetailContent({
         <Button type="button" variant="destructive" onClick={() => setConfirmUninstall(true)}>
           Uninstall
         </Button>
-        <Button type="button" onClick={() => Effect.runFork(openInEditor)}>
+        <Button type="button" onClick={openInEditor}>
           <HugeiconsIcon icon={File01Icon} strokeWidth={2} />
           Open in Editor
         </Button>
@@ -194,11 +197,7 @@ function SkillDetailContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={() => Effect.runFork(uninstall)}
-            >
+            <AlertDialogAction variant="destructive" disabled={busy} onClick={uninstall}>
               Uninstall
             </AlertDialogAction>
           </AlertDialogFooter>

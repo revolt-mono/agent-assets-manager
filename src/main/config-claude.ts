@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Schema } from 'effect'
+import { Data, Effect, FileSystem, Option, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS } from '../shared/config'
@@ -7,42 +7,28 @@ import { orElseNotFound } from './runtime'
 
 export const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
 
-type ClaudeAgentSettingKey = Extract<
-  (typeof CLAUDE_AGENT_FIELDS)[number],
-  { storage: 'settings' }
->['key']
-type ClaudeFeatureSettingKey = Extract<
-  (typeof CLAUDE_FEATURE_FIELDS)[number],
-  { storage: 'settings' }
->['key']
-
 const claudeDraft = configDraftSchema(CLAUDE_AGENT_FIELDS, CLAUDE_FEATURE_FIELDS)
 const decodeDraft = Schema.decodeUnknownEffect(claudeDraft)
 
 export type ClaudeConfig = (typeof claudeDraft)['Type']
 
-export class ClaudeSettingsError extends Schema.TaggedError<ClaudeSettingsError>()(
-  'ClaudeSettingsError',
-  { message: Schema.String }
-) {}
+class ClaudeSettingsError extends Data.TaggedError('ClaudeSettingsError')<{
+  readonly message: string
+}> {}
 
 // ~/.claude/settings.json holds much more than the managed toggles
-// (permissions, hooks, user-set env vars). The declared type covers only the
-// managed slice; the parsed object round-trips through JSON.stringify, so
-// every other key survives byte-for-byte in value terms, reformatted to
-// two-space indent.
+// (permissions, hooks, user-set env vars). The parsed object round-trips
+// through JSON.stringify, so every other key survives byte-for-byte in value
+// terms, reformatted to two-space indent.
 // Agent keys are parsed only down to their string representation: toConfig
 // decides listed-versus-unset, so an unlisted hand edit loads as unset yet
 // survives saves untouched.
-type ClaudeSettings = { env?: Record<string, string> } & {
-  [K in ClaudeAgentSettingKey]?: string
-} & {
-  [K in ClaudeFeatureSettingKey]?: boolean
-}
-
-export const loadClaudeConfig = Effect.gen(function* () {
-  return toConfig(yield* loadSettings)
-})
+const objectSchema = Schema.Record(Schema.String, Schema.mutableKey(Schema.Unknown))
+type JsonObject = typeof objectSchema.Type
+type ClaudeSettings = { values: JsonObject; env: JsonObject }
+const decodeObject = Schema.decodeUnknownEffect(objectSchema)
+const decodeString = Schema.decodeUnknownOption(Schema.String)
+const decodeBoolean = Schema.decodeUnknownOption(Schema.Boolean)
 
 // Parses the untrusted IPC draft against the catalog schema, then writes
 // changed entries in one pass; fails before touching disk.
@@ -57,7 +43,7 @@ export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (values:
     const value = next.agent[field.key]
     if (value === null || value === current.agent[field.key]) continue
     if (field.storage === 'env') env[field.key] = value
-    else settings[field.key] = value
+    else settings.values[field.key] = value
     changed = true
   }
   for (const field of CLAUDE_FEATURE_FIELDS) {
@@ -66,8 +52,8 @@ export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (values:
     if (field.storage === 'env') {
       if (enabled) env[field.key] = '1'
       else delete env[field.key]
-    } else if (enabled === field.default) delete settings[field.key]
-    else settings[field.key] = enabled
+    } else if (enabled === field.default) delete settings.values[field.key]
+    else settings.values[field.key] = enabled
     changed = true
   }
   // These env entries are Claude Code's whole provider switch, so enabling
@@ -84,67 +70,52 @@ export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (values:
     changed = true
   }
   if (!changed) return
-  if (Object.keys(env).length > 0) settings.env = env
-  else delete settings.env
+  const output = { ...settings.values }
+  if (Object.keys(env).length > 0) output.env = env
   yield* fs.makeDirectory(dirname(CLAUDE_FILE), { recursive: true })
-  yield* fs.writeFileString(CLAUDE_FILE, JSON.stringify(settings, null, 2) + '\n')
+  yield* fs.writeFileString(CLAUDE_FILE, JSON.stringify(output, null, 2) + '\n')
 })
 
 const loadSettings = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const raw = yield* fs.readFileString(CLAUDE_FILE).pipe(orElseNotFound(''))
-  const empty: ClaudeSettings = {}
-  if (raw.trim() === '') return empty
+  if (raw.trim() === '') return { values: {}, env: {} }
   const parsed: unknown = yield* Effect.try({
     try: () => JSON.parse(raw),
     catch: (cause) => new ClaudeSettingsError({ message: `Malformed settings.json: ${cause}` })
   })
-  // Reject a mis-shaped file here so a later save can never rewrite it from
-  // scratch or corrupt it by spreading a non-object env. Object() returns its
-  // argument only for objects, rejecting every JSON primitive.
-  if (Object(parsed) !== parsed || Array.isArray(parsed)) {
-    return yield* new ClaudeSettingsError({ message: 'Unsupported settings.json shape' })
-  }
-  // SAFETY: the root is a plain object per the check above and env is
-  // checked next; the declared type covers only the managed slice.
-  const settings = parsed as ClaudeSettings
-  if (
-    settings.env !== undefined &&
-    (Object(settings.env) !== settings.env || Array.isArray(settings.env))
-  ) {
-    return yield* new ClaudeSettingsError({ message: 'Unsupported settings.json env shape' })
-  }
-  // Parse the managed keys here so the rest of the module can trust the
-  // declared types; a wrong-representation hand edit counts as unset.
-  for (const field of CLAUDE_FEATURE_FIELDS) {
-    if (field.storage !== 'settings') continue
-    if (settings[field.key] !== true && settings[field.key] !== false) delete settings[field.key]
-  }
-  for (const field of CLAUDE_AGENT_FIELDS) {
-    if (field.storage !== 'settings') continue
-    const value = settings[field.key]
-    if (value !== undefined && String(value) !== value) delete settings[field.key]
-  }
+  const root = yield* decodeObject(parsed).pipe(
+    Effect.mapError(() => new ClaudeSettingsError({ message: 'Unsupported settings.json shape' }))
+  )
+  const env =
+    root.env === undefined
+      ? {}
+      : yield* decodeObject(root.env).pipe(
+          Effect.mapError(
+            () => new ClaudeSettingsError({ message: 'Unsupported settings.json env shape' })
+          )
+        )
+  delete root.env
   // Managed env entries instead coerce to their string form (a bare 1 reads
   // as '1'): env semantics count presence as on, so scrubbing would flip a
   // hand-set flag off on the next save.
-  const env = settings.env
-  if (env) {
-    for (const field of [...CLAUDE_AGENT_FIELDS, ...CLAUDE_FEATURE_FIELDS]) {
-      if (field.storage !== 'env' || env[field.key] === undefined) continue
-      env[field.key] = String(env[field.key])
-    }
-    for (const key of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'] as const) {
-      if (env[key] !== undefined) env[key] = String(env[key])
-    }
+  for (const field of [...CLAUDE_AGENT_FIELDS, ...CLAUDE_FEATURE_FIELDS]) {
+    if (field.storage !== 'env' || env[field.key] === undefined) continue
+    env[field.key] = String(env[field.key])
   }
-  return settings
+  for (const key of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'] as const) {
+    if (env[key] !== undefined) env[key] = String(env[key])
+  }
+  return { values: root, env }
 })
+
+export const loadClaudeConfig = Effect.map(loadSettings, toConfig)
 
 function toConfig(settings: ClaudeSettings): ClaudeConfig {
   // Claude Code reads the provider entries like `process.env.X || fallback`,
   // so an empty-string value behaves as unset.
-  const { ANTHROPIC_BASE_URL: baseUrl = '', ANTHROPIC_AUTH_TOKEN: apiKey = '' } = settings.env ?? {}
+  const baseUrl = Option.getOrElse(decodeString(settings.env.ANTHROPIC_BASE_URL), () => '')
+  const apiKey = Option.getOrElse(decodeString(settings.env.ANTHROPIC_AUTH_TOKEN), () => '')
   // Claude Code accepts values like "true" beside "1" (and reads some flags
   // by mere presence), so anything but an explicit off value counts as on.
   const enabled = (value: string | undefined): boolean => {
@@ -155,17 +126,25 @@ function toConfig(settings: ClaudeSettings): ClaudeConfig {
   return {
     agent: Object.fromEntries(
       CLAUDE_AGENT_FIELDS.map((field) => {
-        const value = field.storage === 'env' ? settings.env?.[field.key] : settings[field.key]
+        const raw = field.storage === 'env' ? settings.env[field.key] : settings.values[field.key]
+        const decoded = decodeString(raw)
+        if (field.storage === 'settings' && Option.isNone(decoded)) {
+          delete settings.values[field.key]
+        }
+        const value = Option.getOrUndefined(decoded)
         return [field.key, field.options.some((option) => option.value === value) ? value : null]
       })
     ) as ClaudeConfig['agent'],
     features: Object.fromEntries(
-      CLAUDE_FEATURE_FIELDS.map((field) => [
-        field.key,
-        field.storage === 'env'
-          ? enabled(settings.env?.[field.key])
-          : (settings[field.key] ?? field.default)
-      ])
+      CLAUDE_FEATURE_FIELDS.map((field) => {
+        const raw = field.storage === 'env' ? settings.env[field.key] : settings.values[field.key]
+        if (field.storage === 'env') {
+          return [field.key, enabled(Option.getOrUndefined(decodeString(raw)))]
+        }
+        const decoded = decodeBoolean(raw)
+        if (Option.isNone(decoded)) delete settings.values[field.key]
+        return [field.key, Option.getOrElse(decoded, () => field.default)]
+      })
     ) as ClaudeConfig['features'],
     provider: { enabled: baseUrl !== '' && apiKey !== '', baseUrl, apiKey }
   }

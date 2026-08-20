@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Effect } from 'effect'
 import { RefreshIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
@@ -118,11 +117,13 @@ export function UsagePage(): React.JSX.Element {
             size="icon"
             aria-label="Refresh usage"
             disabled={busy}
-            onClick={() => {
+            onClick={async () => {
               setRefreshing(true)
-              Effect.runFork(
-                refreshUsage.pipe(Effect.ensuring(Effect.sync(() => setRefreshing(false))))
-              )
+              try {
+                await refreshUsage()
+              } finally {
+                setRefreshing(false)
+              }
             }}
           >
             <IconSwap>

@@ -27,8 +27,11 @@ tools/oxlint           house anti-slop lint plugin wired via .oxlintrc.json
 
 ## Effect
 
-- Async and validation code uses Effect v4 (`effect@4.0.0-rc.x`), not v3; v3 docs and examples online are often wrong for this API.
-- Read `refs/effect/ai-docs/src` for v4 idioms (`Effect.gen`, `Effect.fn`, services, `Schema`, errors) and `refs/effect/migration` for v3-to-v4 renames; `refs/effect/packages` holds the source of truth.
+- Use Effect v4 (`effect@4.0.0-rc.x`), not v3. Read `refs/effect/ai-docs/src` for idioms, `refs/effect/migration` for renames, and `refs/effect/packages` as the source of truth.
+- Use Effect where typed failure, dependencies, interruption, concurrency, or resource lifetime matter. Keep pure transforms and ordinary UI promises as plain TypeScript.
+- Use named `Effect.fn` for meaningful operational entry points, `Effect.gen` for branching or sequential orchestration, and direct combinators for one-step composition. Do not span tiny internal helpers.
+- Decode unknown input once at ingress with a precompiled Schema decoder. Use `Data.TaggedError` for internal domain failures and schema-backed errors only when errors cross a serialized boundary.
+- Tie resources and background fibers to a scope; bound filesystem and network concurrency unless the input set is already small and fixed.
 
 ## Engineering rules
 

@@ -1,5 +1,4 @@
 import { Children, isValidElement, memo, useRef, useState } from 'react'
-import { Effect } from 'effect'
 import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import Markdown, { type Components } from 'react-markdown'
@@ -73,19 +72,22 @@ function CodeBlock({ lang, code }: { lang: string; code: string }): React.JSX.El
   const [copied, setCopied] = useState(false)
   const resetTimer = useRef(0)
 
-  const copy = Effect.gen(function* () {
-    // the clipboard write can reject (focus lost, permission denied)
-    yield* Effect.tryPromise(() => navigator.clipboard.writeText(code))
-    setCopied(true)
-    window.clearTimeout(resetTimer.current)
-    resetTimer.current = window.setTimeout(() => setCopied(false), 1200)
-  }).pipe(Effect.ignore)
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      window.clearTimeout(resetTimer.current)
+      resetTimer.current = window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // Copy is an optional convenience; leave the button unchanged on failure.
+    }
+  }
 
   return (
     <div className="overflow-hidden rounded-lg bg-muted">
       <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground">
         <span className="capitalize">{lang || 'Code'}</span>
-        <Button type="button" size="icon-xs" variant="ghost" onClick={() => Effect.runFork(copy)}>
+        <Button type="button" size="icon-xs" variant="ghost" onClick={copy}>
           <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} strokeWidth={2} />
           <span className="sr-only">Copy</span>
         </Button>

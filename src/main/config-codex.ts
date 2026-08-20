@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Schema } from 'effect'
+import { Data, Effect, FileSystem, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { parse } from 'smol-toml'
@@ -17,13 +17,9 @@ const decodeDraft = Schema.decodeUnknownEffect(codexDraft)
 
 export type CodexConfig = (typeof codexDraft)['Type']
 
-export class CodexConfigError extends Schema.TaggedError<CodexConfigError>()('CodexConfigError', {
-  message: Schema.String
-}) {}
-
-export const loadCodexConfig = Effect.gen(function* () {
-  return toConfig(yield* loadDoc)
-})
+class CodexConfigError extends Data.TaggedError('CodexConfigError')<{
+  readonly message: string
+}> {}
 
 // Parses the untrusted IPC draft against the catalog schema, then writes
 // changed entries in one pass; fails before touching disk.
@@ -72,9 +68,10 @@ export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (values: C
 
 const loadDoc = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
-  const raw = yield* fs.readFileString(CODEX_FILE).pipe(orElseNotFound(''))
-  return new TomlDoc(raw)
+  return new TomlDoc(yield* fs.readFileString(CODEX_FILE).pipe(orElseNotFound('')))
 })
+
+export const loadCodexConfig = Effect.map(loadDoc, toConfig)
 
 function toConfig(doc: TomlDoc): CodexConfig {
   // SAFETY: fromEntries over the complete field lists yields every key.
