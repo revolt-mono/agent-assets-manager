@@ -198,28 +198,32 @@ function ConfigSections<A extends AgentId>({
 
       <FieldSet className="gap-0">
         <FieldLegend>Agent defaults</FieldLegend>
-        {catalog.defaultFields.map((field) => (
-          <DefaultFieldRow
-            key={field.key}
-            field={field}
-            value={draft?.defaults[field.key] ?? null}
-            disabled={!draft || disabledDefaults?.has(field.key) === true}
-            onChange={(value) => editor.setDefault(field.key, value)}
-          />
-        ))}
+        {catalog.defaultFields
+          .toSorted((left, right) => left.label.localeCompare(right.label))
+          .map((field) => (
+            <DefaultFieldRow
+              key={field.key}
+              field={field}
+              value={draft?.defaults[field.key] ?? null}
+              disabled={!draft || disabledDefaults?.has(field.key) === true}
+              onChange={(value) => editor.setDefault(field.key, value)}
+            />
+          ))}
       </FieldSet>
 
       <FieldSet className="gap-0">
         <FieldLegend>Features</FieldLegend>
-        {catalog.featureFields.map((field) => (
-          <FeatureRow
-            key={field.key}
-            field={field}
-            enabled={draft?.features[field.key] ?? false}
-            disabled={!draft}
-            onChange={(enabled) => editor.setFeature(field.key, enabled)}
-          />
-        ))}
+        {catalog.featureFields
+          .toSorted((left, right) => left.label.localeCompare(right.label))
+          .map((field) => (
+            <FeatureRow
+              key={field.key}
+              field={field}
+              enabled={draft?.features[field.key] ?? false}
+              disabled={!draft}
+              onChange={(enabled) => editor.setFeature(field.key, enabled)}
+            />
+          ))}
       </FieldSet>
     </>
   )

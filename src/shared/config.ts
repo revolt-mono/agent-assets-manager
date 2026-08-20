@@ -199,7 +199,7 @@ const claudeDefaultFields = [
   {
     key: 'effortLevel',
     storage: 'settings',
-    label: 'Effort level',
+    label: 'Reasoning effort',
     description: 'How much adaptive reasoning the model applies to each step.',
     options: [
       { value: 'low', label: 'Low', description: 'Fastest for short, latency-sensitive tasks' },
