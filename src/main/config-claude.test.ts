@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeAll, expect, test } from 'vitest'
+import { applyDefaultChange, CONFIG_CATALOGS, disabledDefaultKeys } from '../shared/config'
 import type { ClaudeConfig } from './config-claude'
 import { runtime } from './runtime'
 
@@ -26,8 +27,31 @@ test('a missing settings file loads pure defaults', async () => {
   expect(config.features.promptSuggestionEnabled).toBe(true)
   expect(config.features.disableArtifact).toBe(false)
   expect(config.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(false)
-  expect(config.agent.model).toBe(null)
-  expect(config.agent.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(null)
+  expect(config.defaults.outputStyle).toBe(null)
+  expect(config.defaults.model).toBe(null)
+  expect(config.defaults.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(null)
+})
+
+test('haiku disables effort through the shared default rule', () => {
+  const defaults: ClaudeConfig['defaults'] = {
+    outputStyle: null,
+    model: 'haiku',
+    effortLevel: 'max',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: null
+  }
+  expect(disabledDefaultKeys(CONFIG_CATALOGS.claude, defaults).has('effortLevel')).toBe(true)
+  expect(
+    disabledDefaultKeys(CONFIG_CATALOGS.claude, { ...defaults, model: 'opus' }).has('effortLevel')
+  ).toBe(false)
+  expect(
+    applyDefaultChange({
+      catalog: CONFIG_CATALOGS.claude,
+      saved: defaults,
+      current: { ...defaults, model: 'opus', effortLevel: 'low' },
+      key: 'model',
+      value: 'haiku'
+    }).effortLevel
+  ).toBe('max')
 })
 
 test('save touches only managed entries; foreign keys and env vars survive', async () => {
@@ -45,8 +69,9 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
 
   await save({
     provider: config.provider,
-    agent: {
-      ...config.agent,
+    defaults: {
+      ...config.defaults,
+      outputStyle: 'default',
       model: 'opus',
       effortLevel: 'max',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-sonnet-5'
@@ -60,8 +85,10 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
     permissions: { allow: ['Bash(ls:*)'] },
+    outputStyle: 'default',
     model: 'opus',
     effortLevel: 'max',
+    autoMemoryEnabled: false,
     env: {
       MY_VAR: 'keep',
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
@@ -73,9 +100,10 @@ test('save touches only managed entries; foreign keys and env vars survive', asy
   expect(roundTrip.features.promptSuggestionEnabled).toBe(true)
   expect(roundTrip.features.CLAUDE_CODE_NO_FLICKER).toBe(false)
   expect(roundTrip.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
-  expect(roundTrip.agent.model).toBe('opus')
-  expect(roundTrip.agent.effortLevel).toBe('max')
-  expect(roundTrip.agent.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-sonnet-5')
+  expect(roundTrip.defaults.outputStyle).toBe('default')
+  expect(roundTrip.defaults.model).toBe('opus')
+  expect(roundTrip.defaults.effortLevel).toBe('max')
+  expect(roundTrip.defaults.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-sonnet-5')
 })
 
 test('off-values and unmanaged hand edits load as unset; unlisted values survive saves', async () => {
@@ -83,6 +111,7 @@ test('off-values and unmanaged hand edits load as unset; unlisted values survive
     file,
     JSON.stringify({
       disableArtifact: 'yes', // non-boolean hand edit counts as unset
+      outputStyle: 'My custom style', // custom styles stay untouched until a built-in is selected
       model: 'claude-opus-4-1', // unlisted value shows as unset but survives saves
       effortLevel: 42, // non-string hand edit counts as unset
       env: {
@@ -99,19 +128,21 @@ test('off-values and unmanaged hand edits load as unset; unlisted values survive
   expect(config.features.CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT).toBe(true)
   expect(config.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(false)
   expect(config.features.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS).toBe(false)
-  expect(config.agent.model).toBe(null)
-  expect(config.agent.effortLevel).toBe(null)
+  expect(config.defaults.outputStyle).toBe(null)
+  expect(config.defaults.model).toBe(null)
+  expect(config.defaults.effortLevel).toBe(null)
 
   await save({ ...config, features: { ...config.features, disableArtifact: true } })
+  expect(JSON.parse(await readFile(file, 'utf8')).outputStyle).toBe('My custom style')
   expect(JSON.parse(await readFile(file, 'utf8')).model).toBe('claude-opus-4-1')
 })
 
 test('an out-of-catalog agent draft value throws before touching disk', async () => {
   const before = await readFile(file, 'utf8')
   const config = await load()
-  await expect(save({ ...config, agent: { ...config.agent, model: 'gpt-5' } })).rejects.toThrow(
-    'Unsupported model value: gpt-5'
-  )
+  await expect(
+    save({ ...config, defaults: { ...config.defaults, model: 'gpt-5' } })
+  ).rejects.toThrow('Unsupported model value: gpt-5')
   expect(await readFile(file, 'utf8')).toBe(before)
 })
 
@@ -123,6 +154,31 @@ test('an empty env object is dropped from the file', async () => {
     features: { ...config.features, CLAUDE_CODE_NO_FLICKER: false }
   })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
+})
+
+test('auto-memory disable reads either control and writes both in sync', async () => {
+  await writeFile(file, JSON.stringify({ env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' } }))
+  expect((await load()).features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
+
+  await writeFile(file, JSON.stringify({ autoMemoryEnabled: false }))
+  const disabled = await load()
+  expect(disabled.features.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe(true)
+
+  await save({
+    ...disabled,
+    features: { ...disabled.features, CLAUDE_CODE_DISABLE_AUTO_MEMORY: false }
+  })
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
+
+  const enabled = await load()
+  await save({
+    ...enabled,
+    features: { ...enabled.features, CLAUDE_CODE_DISABLE_AUTO_MEMORY: true }
+  })
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
+    autoMemoryEnabled: false,
+    env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }
+  })
 })
 
 test('provider env keys round-trip and disabling deletes them', async () => {

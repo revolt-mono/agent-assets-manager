@@ -2,7 +2,7 @@ import { Data, Effect, FileSystem, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { parse } from 'smol-toml'
-import { CODEX_AGENT_FIELDS, CODEX_FEATURE_FIELDS, type ProviderValues } from '../shared/config'
+import { CONFIG_CATALOGS, type ConfigPayload, type ProviderValues } from '../shared/config'
 import { configDraftSchema } from './config-draft'
 import { orElseNotFound } from './runtime'
 import { TomlDoc } from './toml-doc'
@@ -12,10 +12,11 @@ export const CODEX_FILE = join(homedir(), '.codex', 'config.toml')
 const FEATURES_TABLE = 'features'
 const PROVIDER_TABLE = 'model_providers.revolt'
 
-const codexDraft = configDraftSchema(CODEX_AGENT_FIELDS, CODEX_FEATURE_FIELDS)
-const decodeDraft = Schema.decodeUnknownEffect(codexDraft)
+const catalog = CONFIG_CATALOGS.codex
+const draftSchema = configDraftSchema(catalog.defaultFields, catalog.featureFields)
+const decodeDraft = Schema.decodeUnknownEffect(draftSchema)
 
-export type CodexConfig = (typeof codexDraft)['Type']
+export type CodexConfig = (typeof draftSchema)['Type']
 
 class CodexConfigError extends Data.TaggedError('CodexConfigError')<{
   readonly message: string
@@ -23,30 +24,30 @@ class CodexConfigError extends Data.TaggedError('CodexConfigError')<{
 
 // Parses the untrusted IPC draft against the catalog schema, then writes
 // changed entries in one pass; fails before touching disk.
-export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (values: CodexConfig) {
-  const next = yield* decodeDraft(values)
+export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (input: ConfigPayload) {
+  const next = yield* decodeDraft(input)
   const fs = yield* FileSystem.FileSystem
-  const doc = yield* loadDoc
+  const doc = yield* loadDocument()
   const current = toConfig(doc)
   let changed = false
-  for (const field of CODEX_AGENT_FIELDS) {
-    const value = next.agent[field.key]
-    if (value === null || value === current.agent[field.key]) continue
+  for (const field of catalog.defaultFields) {
+    const value = next.defaults[field.key]
+    if (value === null || value === current.defaults[field.key]) continue
     doc.set(null, field.key, value)
     changed = true
   }
-  for (const field of CODEX_FEATURE_FIELDS) {
+  for (const field of catalog.featureFields) {
     const enabled = next.features[field.key]
     if (enabled === current.features[field.key]) continue
     doc.set(FEATURES_TABLE, field.key, enabled)
     changed = true
   }
   const provider = next.provider
-  if (JSON.stringify(provider) !== JSON.stringify(current.provider)) {
-    // Provider values are written inside double quotes; reject the unquotable.
-    if (/[\r\n"\\]/.test(provider.baseUrl + provider.apiKey)) {
-      return yield* new CodexConfigError({ message: 'Unsupported characters in provider values' })
-    }
+  if (
+    provider.enabled !== current.provider.enabled ||
+    provider.baseUrl !== current.provider.baseUrl ||
+    provider.apiKey !== current.provider.apiKey
+  ) {
     rewriteProvider(doc, provider)
     // Codex compresses request bodies by default, which third-party endpoints
     // rarely accept; force it off while the custom provider is active and
@@ -66,25 +67,25 @@ export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (values: C
   yield* fs.writeFileString(CODEX_FILE, text)
 })
 
-const loadDoc = Effect.gen(function* () {
+const loadDocument = Effect.fn('loadCodexDocument')(function* () {
   const fs = yield* FileSystem.FileSystem
   return new TomlDoc(yield* fs.readFileString(CODEX_FILE).pipe(orElseNotFound('')))
 })
 
-export const loadCodexConfig = Effect.map(loadDoc, toConfig)
+export const loadCodexConfig = Effect.map(loadDocument(), toConfig)
 
 function toConfig(doc: TomlDoc): CodexConfig {
   // SAFETY: fromEntries over the complete field lists yields every key.
   return {
-    agent: Object.fromEntries(
-      CODEX_AGENT_FIELDS.map((field) => {
+    defaults: Object.fromEntries(
+      catalog.defaultFields.map((field) => {
         const value = doc.get(null, field.key)
         if (value === undefined) return [field.key, field.default]
         return [field.key, field.options.some((option) => option.value === value) ? value : null]
       })
-    ) as CodexConfig['agent'],
+    ) as CodexConfig['defaults'],
     features: Object.fromEntries(
-      CODEX_FEATURE_FIELDS.map((field) => [
+      catalog.featureFields.map((field) => [
         field.key,
         doc.getBool(FEATURES_TABLE, field.key) ?? field.default
       ])

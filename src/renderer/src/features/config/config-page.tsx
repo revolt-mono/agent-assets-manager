@@ -26,96 +26,93 @@ import { AgentTabsList } from '@renderer/components/agent-tabs'
 import { IconSwap, IconSwapItem } from '@renderer/components/icon-swap'
 import { PageHeader } from '@renderer/components/page-header'
 import { cn } from '@renderer/lib/utils'
-import { saveConfig, useSavedConfig } from '@renderer/features/config/store'
+import { configStores, type ConfigStore } from '@renderer/features/config/store'
+import { useStore } from '@renderer/lib/store'
 import { AGENT_IDS, parseAgent, type AgentId } from '@shared/agent'
 import {
-  CLAUDE_AGENT_FIELDS,
-  CLAUDE_FEATURE_FIELDS,
-  CODEX_AGENT_FIELDS,
-  CODEX_FEATURE_FIELDS,
-  type AgentConfigValues,
+  applyDefaultChange,
+  disabledDefaultKeys,
+  type ConfigDefaultKey,
+  type ConfigFeatureKey,
+  type ConfigValues,
+  type DefaultField,
+  type FeatureField,
   type ProviderValues
 } from '@shared/config'
-
-type AgentFieldDef = {
-  key: string
-  label: string
-  description: string
-  options: readonly { value: string; label: string; description: string }[]
-}
-
-type FeatureFieldDef = {
-  key: string
-  label: string
-  description: string
-  note?: { recommended: string; reason: string }
-}
-
-// Everything the page renders per agent: the shared field catalogs plus the
-// per-agent provider copy.
-const CATALOGS = {
-  claude: {
-    agentFields: CLAUDE_AGENT_FIELDS,
-    featureFields: CLAUDE_FEATURE_FIELDS,
-    baseUrlDescription: 'Endpoint speaking the Anthropic Messages API.',
-    apiKeyDescription: 'Sent to the configured endpoint; stored in settings.json.'
-  },
-  codex: {
-    agentFields: CODEX_AGENT_FIELDS,
-    featureFields: CODEX_FEATURE_FIELDS,
-    baseUrlDescription: 'Endpoint speaking the OpenAI Responses API.',
-    apiKeyDescription: 'Sent to the configured endpoint; stored in config.toml.'
-  }
-} satisfies Record<
-  AgentId,
-  {
-    agentFields: readonly AgentFieldDef[]
-    featureFields: readonly FeatureFieldDef[]
-    baseUrlDescription: string
-    apiKeyDescription: string
-  }
->
 
 // One agent's edit session: the draft overlays the saved snapshot it was
 // based on and survives tab switches; a newer snapshot (external file change,
 // or our own save landing) discards it.
-type ConfigEditor = {
-  saved: AgentConfigValues | undefined
-  draft: AgentConfigValues | undefined
+type ConfigEditor<A extends AgentId> = {
+  catalog: ConfigStore<A>['catalog']
+  draft: ConfigValues<A> | undefined
   dirty: boolean
-  patch: (update: (draft: AgentConfigValues) => AgentConfigValues) => void
+  setDefault: (key: ConfigDefaultKey<A>, value: string) => void
+  setFeature: (key: ConfigFeatureKey<A>, enabled: boolean) => void
+  setProvider: (provider: ProviderValues) => void
+  save: () => Promise<boolean>
 }
 
-function useConfigEditor(agent: AgentId): ConfigEditor {
-  const saved = useSavedConfig(agent)
-  const [edit, setEdit] = useState<{ base: AgentConfigValues; draft: AgentConfigValues } | null>(
-    null
-  )
+function useConfigEditor<A extends AgentId>(config: ConfigStore<A>): ConfigEditor<A> {
+  const saved = useStore(config.values)
+  const [edit, setEdit] = useState<{
+    base: ConfigValues<A>
+    draft: ConfigValues<A>
+  } | null>(null)
   const draft = edit && edit.base === saved ? edit.draft : saved
+  const patch = (
+    update: (current: ConfigValues<A>, saved: ConfigValues<A>) => ConfigValues<A>
+  ): void => {
+    if (saved && draft) setEdit({ base: saved, draft: update(draft, saved) })
+  }
   return {
-    saved,
+    catalog: config.catalog,
     draft,
     dirty: draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved),
-    patch: (update) => {
-      if (saved && draft) setEdit({ base: saved, draft: update(draft) })
+    setDefault: (key, value) =>
+      patch((current, saved) => ({
+        ...current,
+        defaults: applyDefaultChange({
+          catalog: config.catalog,
+          saved: saved.defaults,
+          current: current.defaults,
+          key,
+          value
+        })
+      })),
+    setFeature: (key, enabled) =>
+      patch((current) => ({
+        ...current,
+        features: { ...current.features, [key]: enabled }
+      })),
+    setProvider: (provider) => patch((current) => ({ ...current, provider })),
+    save: async () => {
+      if (!draft) return false
+      await config.save(draft)
+      return true
     }
   }
 }
 
 export function ConfigPage(): React.JSX.Element {
   const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
-  const claude = useConfigEditor('claude')
-  const codex = useConfigEditor('codex')
-  const active = agent === 'claude' ? claude : codex
+  const editors = {
+    claude: useConfigEditor(configStores.claude),
+    codex: useConfigEditor(configStores.codex)
+  }
+  const active = editors[agent]
+  const sections = {
+    claude: <ConfigSections editor={editors.claude} />,
+    codex: <ConfigSections editor={editors.codex} />
+  } satisfies Record<AgentId, React.JSX.Element>
   // Tracks which agent's save just landed so the checkmark only shows on the
   // tab that was saved, even when the save resolves after a tab switch.
   const [justSaved, setJustSaved] = useState<AgentId | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const save = async (): Promise<void> => {
-    if (!active.draft) return
     try {
-      await saveConfig(agent, active.draft)
+      if (!(await active.save())) return
       setJustSaved(agent)
       clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => setJustSaved(null), 2000)
@@ -174,26 +171,19 @@ export function ConfigPage(): React.JSX.Element {
         value={agent}
         className="scroll-fade my-2 flex min-h-0 flex-col gap-8 overflow-y-auto px-6 pb-2"
       >
-        <AgentSections agent={agent} editor={active} />
+        {sections[agent]}
       </TabsContent>
     </Tabs>
   )
 }
 
-function AgentSections({
-  agent,
+function ConfigSections<A extends AgentId>({
   editor
 }: {
-  agent: AgentId
-  editor: ConfigEditor
+  editor: ConfigEditor<A>
 }): React.JSX.Element {
-  const { draft, patch } = editor
-  const catalog = CATALOGS[agent]
-  // Haiku models take no effort levels (code.claude.com/docs/en/model-config),
-  // so the effort select grays out while haiku is the drafted model. Picking
-  // haiku reverts any drafted effort change so the inert select never saves a
-  // new value; a previously stored effortLevel key stays untouched.
-  const effortInert = agent === 'claude' && draft?.agent.model === 'haiku'
+  const { catalog, draft } = editor
+  const disabledDefaults = draft ? disabledDefaultKeys(catalog, draft.defaults) : undefined
   return (
     <>
       <FieldSet className="gap-0">
@@ -202,30 +192,19 @@ function AgentSections({
           provider={draft?.provider}
           baseUrlDescription={catalog.baseUrlDescription}
           apiKeyDescription={catalog.apiKeyDescription}
-          onChange={(provider) => patch((current) => ({ ...current, provider }))}
+          onChange={editor.setProvider}
         />
       </FieldSet>
 
       <FieldSet className="gap-0">
         <FieldLegend>Agent defaults</FieldLegend>
-        {catalog.agentFields.map((field) => (
-          <AgentFieldRow
+        {catalog.defaultFields.map((field) => (
+          <DefaultFieldRow
             key={field.key}
             field={field}
-            value={draft?.agent[field.key] ?? null}
-            disabled={!draft || (effortInert && field.key === 'effortLevel')}
-            onChange={(value) =>
-              patch((current) => {
-                const values: AgentConfigValues['agent'] = {
-                  ...current.agent,
-                  [field.key]: value
-                }
-                if (agent === 'claude' && field.key === 'model' && value === 'haiku') {
-                  values.effortLevel = editor.saved?.agent.effortLevel ?? null
-                }
-                return { ...current, agent: values }
-              })
-            }
+            value={draft?.defaults[field.key] ?? null}
+            disabled={!draft || disabledDefaults?.has(field.key) === true}
+            onChange={(value) => editor.setDefault(field.key, value)}
           />
         ))}
       </FieldSet>
@@ -238,12 +217,7 @@ function AgentSections({
             field={field}
             enabled={draft?.features[field.key] ?? false}
             disabled={!draft}
-            onChange={(enabled) =>
-              patch((current) => ({
-                ...current,
-                features: { ...current.features, [field.key]: enabled }
-              }))
-            }
+            onChange={(enabled) => editor.setFeature(field.key, enabled)}
           />
         ))}
       </FieldSet>
@@ -284,11 +258,10 @@ function ProviderFields({
 }): React.JSX.Element {
   // Credentials gate the switch: clearing either field turns the provider off,
   // and it cannot be re-enabled until both are filled in again.
-  const set = (partial: Partial<ProviderValues>): void => {
+  const updateProvider = (partial: Partial<ProviderValues>): void => {
     if (!provider) return
     const next = { ...provider, ...partial }
-    if (next.baseUrl === '' || next.apiKey === '') next.enabled = false
-    onChange(next)
+    onChange(next.baseUrl === '' || next.apiKey === '' ? { ...next, enabled: false } : next)
   }
   return (
     <>
@@ -301,7 +274,7 @@ function ProviderFields({
           disabled={
             !provider || (!provider.enabled && (provider.baseUrl === '' || provider.apiKey === ''))
           }
-          onToggle={() => set({ enabled: !provider?.enabled })}
+          onToggle={() => updateProvider({ enabled: !provider?.enabled })}
         />
       </ConfigRow>
       <ConfigRow title="Base URL" description={baseUrlDescription}>
@@ -311,7 +284,7 @@ function ProviderFields({
           placeholder="https://api.example.com/v1"
           spellCheck={false}
           className="w-72"
-          onChange={(event) => set({ baseUrl: event.target.value.trim() })}
+          onChange={(event) => updateProvider({ baseUrl: event.target.value.trim() })}
         />
       </ConfigRow>
       <ConfigRow title="API key" description={apiKeyDescription}>
@@ -322,20 +295,20 @@ function ProviderFields({
           placeholder="sk-..."
           autoComplete="off"
           className="w-72"
-          onChange={(event) => set({ apiKey: event.target.value.trim() })}
+          onChange={(event) => updateProvider({ apiKey: event.target.value.trim() })}
         />
       </ConfigRow>
     </>
   )
 }
 
-function AgentFieldRow({
+function DefaultFieldRow({
   field,
   value,
   disabled,
   onChange
 }: {
-  field: AgentFieldDef
+  field: DefaultField
   value: string | null
   disabled: boolean
   onChange: (value: string) => void
@@ -374,7 +347,7 @@ function FeatureRow({
   disabled,
   onChange
 }: {
-  field: FeatureFieldDef
+  field: FeatureField
   enabled: boolean
   disabled: boolean
   onChange: (enabled: boolean) => void

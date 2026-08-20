@@ -1,10 +1,22 @@
 import { toast } from '@renderer/components/ui/toast'
-import { createStore, latestWins, useStore } from '@renderer/lib/store'
+import { createStore, latestWins, type Store } from '@renderer/lib/store'
 import type { AgentId } from '@shared/agent'
-import type { AgentConfigValues } from '@shared/config'
+import { CONFIG_CATALOGS, type ConfigCatalog, type ConfigValues } from '@shared/config'
 
-function createConfigStore(agent: AgentId) {
-  const store = createStore<AgentConfigValues | undefined>(undefined, () => revalidate())
+export type ConfigStore<A extends AgentId> = {
+  catalog: ConfigCatalog<A>
+  values: Store<ConfigValues<A> | undefined>
+  save: (values: ConfigValues<A>) => Promise<void>
+}
+
+type WatchedConfigStore<A extends AgentId> = ConfigStore<A> & { onChanged: () => void }
+type ConfigStores = { [A in AgentId]: ConfigStore<A> }
+
+function createConfigStore<A extends AgentId>(
+  agent: A,
+  catalog: ConfigCatalog<A>
+): WatchedConfigStore<A> {
+  const values = createStore<ConfigValues<A> | undefined>(undefined, () => revalidate())
   // A newer revalidate (or a landed save) supersedes the in-flight read so a
   // stale snapshot can never overwrite a fresher one.
   const inflight = latestWins()
@@ -12,11 +24,11 @@ function createConfigStore(agent: AgentId) {
   function revalidate(): void {
     void inflight.run(
       () => window.api.config.get(agent),
-      (values) => {
+      (next) => {
         // The save echo and unmanaged-key file churn arrive as deep-equal
         // snapshots; keep the old reference so the page's identity-keyed
         // draft only resets when the managed content really changed.
-        if (JSON.stringify(values) !== JSON.stringify(store.get())) store.set(values)
+        if (JSON.stringify(next) !== JSON.stringify(values.get())) values.set(next)
       },
       () => toast.add({ title: 'Could not load config', type: 'error' })
     )
@@ -25,38 +37,33 @@ function createConfigStore(agent: AgentId) {
   // Publishes the draft as the new saved value once main has written it, so
   // the UI settles immediately instead of waiting for the file watcher's
   // echo. On failure it re-reads the file to show what actually stuck.
-  const save = async (values: AgentConfigValues): Promise<void> => {
+  const save = async (next: ConfigValues<A>): Promise<void> => {
     try {
-      await window.api.config.save(agent, values)
+      await window.api.config.save(agent, next)
     } catch (error) {
       revalidate()
       throw error
     }
     inflight.cancel()
-    store.set(values)
+    values.set(next)
   }
 
   return {
-    store,
+    catalog,
+    values,
     // An unwatched store skips the re-read; the next subscriber revalidates.
     onChanged: () => {
-      if (store.watched()) revalidate()
+      if (values.watched()) revalidate()
     },
     save
   }
 }
 
-const stores = {
-  claude: createConfigStore('claude'),
-  codex: createConfigStore('codex')
-}
+const watchedConfigStores = {
+  claude: createConfigStore('claude', CONFIG_CATALOGS.claude),
+  codex: createConfigStore('codex', CONFIG_CATALOGS.codex)
+} satisfies { [A in AgentId]: WatchedConfigStore<A> }
 
-window.api.config.onChanged((agent) => stores[agent].onChanged())
+window.api.config.onChanged((agent) => watchedConfigStores[agent].onChanged())
 
-export function useSavedConfig(agent: AgentId): AgentConfigValues | undefined {
-  return useStore(stores[agent].store)
-}
-
-export function saveConfig(agent: AgentId, values: AgentConfigValues): Promise<void> {
-  return stores[agent].save(values)
-}
+export const configStores: ConfigStores = watchedConfigStores

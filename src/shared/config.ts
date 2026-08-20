@@ -1,6 +1,27 @@
 import type { AgentId } from './agent'
 
-export const CODEX_AGENT_FIELDS = [
+type SelectOption = { value: string; label: string; description: string }
+type NonEmpty<T> = readonly [T, ...T[]]
+
+export type DefaultField = {
+  key: string
+  label: string
+  description: string
+  options: NonEmpty<SelectOption>
+}
+
+export type FeatureField = {
+  key: string
+  label: string
+  description: string
+  note?: { recommended: string; reason: string }
+}
+
+type ClaudeFeatureBinding =
+  | { kind: 'env'; key: string }
+  | { kind: 'setting'; key: string; enabledValue: boolean; defaultValue: boolean }
+
+const codexDefaultFields = [
   {
     key: 'model_reasoning_effort',
     label: 'Reasoning effort',
@@ -82,9 +103,9 @@ export const CODEX_AGENT_FIELDS = [
       }
     ]
   }
-] as const
+] as const satisfies readonly (DefaultField & { default: string })[]
 
-export const CODEX_FEATURE_FIELDS = [
+const codexFeatureFields = [
   {
     key: 'apps',
     label: 'Apps',
@@ -123,12 +144,46 @@ export const CODEX_FEATURE_FIELDS = [
     },
     default: true
   }
-] as const
+] as const satisfies readonly (FeatureField & { default: boolean })[]
 
 // Claude Code agent defaults, persisted in ~/.claude/settings.json.
 // `settings` storage is a top-level string key, `env` storage an entry in the
 // `env` object; either way, absent or an unlisted value shows as "Not set".
-export const CLAUDE_AGENT_FIELDS = [
+const claudeDefaultFields = [
+  {
+    key: 'outputStyle',
+    storage: 'settings',
+    label: 'Output style',
+    description: 'How Claude communicates with you.',
+    options: [
+      {
+        value: 'default',
+        label: 'Default',
+        description: 'Completes coding tasks efficiently and provides concise responses'
+      },
+      {
+        value: 'Proactive',
+        label: 'Proactive',
+        description:
+          'Executes immediately, minimizes interruptions, and prefers action over planning'
+      },
+      {
+        value: 'Concise',
+        label: 'Concise',
+        description: 'Responds tersely, leading with results and skipping preamble and narration'
+      },
+      {
+        value: 'Explanatory',
+        label: 'Explanatory',
+        description: 'Explains its implementation choices and codebase patterns'
+      },
+      {
+        value: 'Learning',
+        label: 'Learning',
+        description: 'Pauses and asks you to write small pieces of code for hands-on practice'
+      }
+    ]
+  },
   {
     key: 'model',
     storage: 'settings',
@@ -182,18 +237,22 @@ export const CLAUDE_AGENT_FIELDS = [
       { value: 'claude-fable-5', label: 'Fable', description: 'Most capable Mythos-class tier' }
     ]
   }
-] as const
+] as const satisfies readonly (DefaultField & { storage: 'settings' | 'env' })[]
 
-// Claude Code feature toggles, all persisted in ~/.claude/settings.json.
-// `settings` storage is a top-level boolean key: absent means the field
-// default, and saving the default deletes the key. `env` storage is an entry
-// in the `env` object: a truthy value (anything but "", "0", "false") means
-// on, an absent key means off; turning on writes "1", off deletes.
-export const CLAUDE_FEATURE_FIELDS = [
+// Each feature declares every setting that controls it. A setting binding maps
+// the UI's enabled state to Claude Code's boolean value; an env binding is on
+// for any truthy value. Missing bindings use their declared defaults.
+const claudeFeatureFields = [
   {
     key: 'disableClaudeAiConnectors',
-    storage: 'settings',
-    default: false,
+    bindings: [
+      {
+        kind: 'setting',
+        key: 'disableClaudeAiConnectors',
+        enabledValue: true,
+        defaultValue: false
+      }
+    ],
     label: 'Disable claude.ai connectors',
     description: 'Stop auto-fetching and connecting MCP connectors from claude.ai.',
     note: {
@@ -204,8 +263,9 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'disableArtifact',
-    storage: 'settings',
-    default: false,
+    bindings: [
+      { kind: 'setting', key: 'disableArtifact', enabledValue: true, defaultValue: false }
+    ],
     label: 'Disable artifacts',
     description: 'Remove the Artifact tool that publishes session output to claude.ai.',
     note: {
@@ -216,8 +276,9 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'disableRemoteControl',
-    storage: 'settings',
-    default: false,
+    bindings: [
+      { kind: 'setting', key: 'disableRemoteControl', enabledValue: true, defaultValue: false }
+    ],
     label: 'Disable remote control',
     description: 'Block remote-control sessions, auto-start, and the in-session toggle.',
     note: {
@@ -228,8 +289,9 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'promptSuggestionEnabled',
-    storage: 'settings',
-    default: true,
+    bindings: [
+      { kind: 'setting', key: 'promptSuggestionEnabled', enabledValue: true, defaultValue: true }
+    ],
     label: 'Prompt suggestions',
     description: 'Show grayed-out predictions in the prompt input.',
     note: {
@@ -239,8 +301,9 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'switchModelsOnFlag',
-    storage: 'settings',
-    default: true,
+    bindings: [
+      { kind: 'setting', key: 'switchModelsOnFlag', enabledValue: true, defaultValue: true }
+    ],
     label: 'Switch models on flag',
     description: 'Auto-switch to the fallback model when a safety classifier flags a request.',
     note: {
@@ -250,8 +313,14 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'wheelScrollAccelerationEnabled',
-    storage: 'settings',
-    default: true,
+    bindings: [
+      {
+        kind: 'setting',
+        key: 'wheelScrollAccelerationEnabled',
+        enabledValue: true,
+        defaultValue: true
+      }
+    ],
     label: 'Wheel scroll acceleration',
     description: 'Speed up mouse-wheel scrolling during fast scrolls in fullscreen mode.',
     note: {
@@ -261,7 +330,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' }],
     label: 'Disable nonessential traffic',
     description: 'Skip auto-updates, telemetry, error reporting, and other background requests.',
     note: {
@@ -271,7 +340,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_BUNDLED_SKILLS' }],
     label: 'Disable bundled skills',
     description: 'Remove built-in skills and slash commands like /code-review and /run.',
     note: {
@@ -282,7 +351,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL' }],
     label: 'Disable Claude API skill',
     description: 'Stop the bundled skill that auto-triggers on Anthropic SDK and API code.',
     note: {
@@ -292,7 +361,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL' }],
     label: 'Disable Claude Code skill',
     description: 'Stop the bundled guide skill that answers Claude Code usage questions.',
     note: {
@@ -302,7 +371,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS' }],
     label: 'Disable git instructions',
     description: 'Drop the built-in git workflow guidance from the system prompt.',
     note: {
@@ -312,7 +381,15 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
-    storage: 'env',
+    bindings: [
+      { kind: 'env', key: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY' },
+      {
+        kind: 'setting',
+        key: 'autoMemoryEnabled',
+        enabledValue: false,
+        defaultValue: true
+      }
+    ],
     label: 'Disable auto memory',
     description: 'Stop reading and writing per-project memory notes across sessions.',
     note: {
@@ -322,7 +399,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT' }],
     label: 'Simple system prompt',
     description: 'Collapse the system prompt to a minimal identity-and-cwd version.',
     note: {
@@ -333,7 +410,7 @@ export const CLAUDE_FEATURE_FIELDS = [
   },
   {
     key: 'CLAUDE_CODE_NO_FLICKER',
-    storage: 'env',
+    bindings: [{ kind: 'env', key: 'CLAUDE_CODE_NO_FLICKER' }],
     label: 'No-flicker renderer',
     description: 'Render the TUI on the alternate screen with mouse support and no flicker.',
     note: {
@@ -341,7 +418,60 @@ export const CLAUDE_FEATURE_FIELDS = [
       reason: 'alternate-screen rendering avoids flicker and adds mouse support in fullscreen.'
     }
   }
-] as const
+] as const satisfies readonly (FeatureField & {
+  bindings: NonEmpty<ClaudeFeatureBinding>
+})[]
+
+type DefaultFieldKey<Fields extends readonly DefaultField[]> = Fields[number]['key']
+type DefaultFieldValue<
+  Fields extends readonly DefaultField[],
+  Key extends DefaultFieldKey<Fields>
+> = Extract<Fields[number], { key: Key }>['options'][number]['value']
+
+type DefaultRule<Fields extends readonly DefaultField[]> = {
+  [Controller in DefaultFieldKey<Fields>]: {
+    kind: 'disableWhen'
+    target: DefaultFieldKey<Fields>
+    when: { field: Controller; value: DefaultFieldValue<Fields, Controller> }
+  }
+}[DefaultFieldKey<Fields>]
+
+function defineCatalog<
+  const Fields extends NonEmpty<DefaultField>,
+  const Features extends readonly FeatureField[],
+  const Rules extends readonly DefaultRule<Fields>[]
+>(catalog: {
+  defaultFields: Fields
+  defaultRules: Rules
+  featureFields: Features
+  baseUrlDescription: string
+  apiKeyDescription: string
+}) {
+  return catalog
+}
+
+export const CONFIG_CATALOGS = {
+  claude: defineCatalog({
+    defaultFields: claudeDefaultFields,
+    defaultRules: [
+      {
+        kind: 'disableWhen',
+        target: 'effortLevel',
+        when: { field: 'model', value: 'haiku' }
+      }
+    ],
+    featureFields: claudeFeatureFields,
+    baseUrlDescription: 'Endpoint speaking the Anthropic Messages API.',
+    apiKeyDescription: 'Sent to the configured endpoint; stored in settings.json.'
+  }),
+  codex: defineCatalog({
+    defaultFields: codexDefaultFields,
+    defaultRules: [],
+    featureFields: codexFeatureFields,
+    baseUrlDescription: 'Endpoint speaking the OpenAI Responses API.',
+    apiKeyDescription: 'Sent to the configured endpoint; stored in config.toml.'
+  })
+} as const satisfies Record<AgentId, ReturnType<typeof defineCatalog>>
 
 export type ProviderValues = {
   enabled: boolean
@@ -349,17 +479,50 @@ export type ProviderValues = {
   apiKey: string
 }
 
-// One agent's managed values as they cross IPC, keyed by the catalogs above.
-// The renderer renders whatever the catalogs describe; main parses a draft
-// against its own catalog before trusting it.
-export type AgentConfigValues = {
-  agent: Record<string, string | null>
-  features: Record<string, boolean>
+type Catalog = typeof CONFIG_CATALOGS
+export type ConfigCatalog<A extends AgentId> = Catalog[A]
+export type ConfigDefaultKey<A extends AgentId> = Catalog[A]['defaultFields'][number]['key']
+export type ConfigFeatureKey<A extends AgentId> = Catalog[A]['featureFields'][number]['key']
+type AnyConfigCatalog = Catalog[AgentId]
+type CatalogDefaultKey<C extends AnyConfigCatalog> = C['defaultFields'][number]['key']
+type CatalogDefaults<C extends AnyConfigCatalog> = Record<CatalogDefaultKey<C>, string | null>
+
+export type ConfigValues<A extends AgentId> = {
+  defaults: Record<ConfigDefaultKey<A>, string | null>
+  features: Record<ConfigFeatureKey<A>, boolean>
   provider: ProviderValues
 }
 
+export function disabledDefaultKeys<C extends AnyConfigCatalog>(
+  catalog: C,
+  defaults: CatalogDefaults<C>
+): ReadonlySet<CatalogDefaultKey<C>> {
+  return new Set(
+    catalog.defaultRules.flatMap((rule) =>
+      defaults[rule.when.field] === rule.when.value ? [rule.target] : []
+    )
+  )
+}
+
+export function applyDefaultChange<C extends AnyConfigCatalog>(input: {
+  catalog: C
+  saved: CatalogDefaults<C>
+  current: CatalogDefaults<C>
+  key: CatalogDefaultKey<C>
+  value: string
+}): CatalogDefaults<C> {
+  const { catalog, saved, current, key, value } = input
+  const changed = { ...current, [key]: value } satisfies CatalogDefaults<C>
+  return [...disabledDefaultKeys(catalog, changed)].reduce<CatalogDefaults<C>>(
+    (values, disabledKey) => ({ ...values, [disabledKey]: saved[disabledKey] }),
+    changed
+  )
+}
+
+export type ConfigPayload = { [A in AgentId]: ConfigValues<A> }[AgentId]
+
 export type ConfigApi = {
-  get: (agent: AgentId) => Promise<AgentConfigValues>
-  save: (agent: AgentId, values: AgentConfigValues) => Promise<void>
+  get: <A extends AgentId>(agent: A) => Promise<ConfigValues<A>>
+  save: <A extends AgentId>(agent: A, values: ConfigValues<A>) => Promise<void>
   onChanged: (callback: (agent: AgentId) => void) => () => void
 }

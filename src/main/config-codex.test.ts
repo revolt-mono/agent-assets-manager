@@ -22,8 +22,8 @@ beforeAll(async () => {
 
 test('a missing config file loads pure defaults', async () => {
   const config = await load()
-  expect(config.agent.model_reasoning_effort).toBe('medium')
-  expect(config.agent.sandbox_mode).toBe('workspace-write')
+  expect(config.defaults.model_reasoning_effort).toBe('medium')
+  expect(config.defaults.sandbox_mode).toBe('workspace-write')
   expect(config.features).toMatchObject({ apps: true, memories: false })
   expect(config.provider).toEqual({ enabled: false, baseUrl: '', apiKey: '' })
 })
@@ -42,12 +42,12 @@ test('save rewrites only changed entries; hand edits and comments survive', asyn
     ].join('\n')
   )
   const config = await load()
-  expect(config.agent.model_reasoning_effort).toBe('low')
+  expect(config.defaults.model_reasoning_effort).toBe('low')
   expect(config.features.apps).toBe(false)
 
   await save({
     ...config,
-    agent: { ...config.agent, model_reasoning_effort: 'high' },
+    defaults: { ...config.defaults, model_reasoning_effort: 'high' },
     features: { ...config.features, memories: true }
   })
   expect(await readFile(file, 'utf8')).toBe(
@@ -68,7 +68,7 @@ test('an out-of-catalog draft value throws before touching disk', async () => {
   const before = await readFile(file, 'utf8')
   const config = await load()
   await expect(
-    save({ ...config, agent: { ...config.agent, model_reasoning_effort: 'turbo' } })
+    save({ ...config, defaults: { ...config.defaults, model_reasoning_effort: 'turbo' } })
   ).rejects.toThrow('Unsupported model_reasoning_effort value: turbo')
   expect(await readFile(file, 'utf8')).toBe(before)
 })
@@ -76,7 +76,7 @@ test('an out-of-catalog draft value throws before touching disk', async () => {
 test('an unrecognized hand-set value loads as null and survives saves', async () => {
   await writeFile(file, 'model_reasoning_effort = "turbo"\n')
   const config = await load()
-  expect(config.agent.model_reasoning_effort).toBeNull()
+  expect(config.defaults.model_reasoning_effort).toBeNull()
   // null means "leave the file value alone"
   await save({ ...config, features: { ...config.features, memories: true } })
   expect(await readFile(file, 'utf8')).toContain('model_reasoning_effort = "turbo"')
@@ -122,6 +122,6 @@ test('provider validation rejects incomplete or unquotable values', async () => 
       ...config,
       provider: { enabled: true, baseUrl: 'https://x.test/"v1', apiKey: 'sk' }
     })
-  ).rejects.toThrow('Unsupported characters in provider values')
+  ).rejects.toThrow('Edit produced invalid TOML')
   expect(await readFile(file, 'utf8')).toBe(before)
 })
