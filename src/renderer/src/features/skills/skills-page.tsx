@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CubeIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
@@ -16,51 +16,20 @@ import { PageHeader } from '@renderer/components/page-header'
 import { SkillDetail } from '@renderer/features/skills/skill-detail'
 import { loadSkillBody, useSkills } from '@renderer/features/skills/store'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
-import type { Skill, SkillBody } from '@shared/skill'
-
-const SKELETON_DELAY_MS = 150
-
-type SkillsView = { kind: 'blank' } | { kind: 'skeleton' } | { kind: 'loaded'; skills: Skill[] }
-
-// Revisited tabs render instantly from the per-agent store cache; a first
-// load stays blank and shows the skeleton only once it has been pending past
-// SKELETON_DELAY_MS.
-function useSkillsView(agent: AgentId): SkillsView {
-  const skills = useSkills(agent)
-
-  const pending = skills === null
-  const [slow, setSlow] = useState(false)
-  useEffect(() => {
-    if (!pending) {
-      setSlow(false)
-      return
-    }
-    const timer = setTimeout(() => setSlow(true), SKELETON_DELAY_MS)
-    return () => clearTimeout(timer)
-  }, [pending])
-
-  return useMemo(() => {
-    if (skills) return { kind: 'loaded', skills }
-    return slow ? { kind: 'skeleton' } : { kind: 'blank' }
-  }, [skills, slow])
-}
+import type { SkillBody } from '@shared/skill'
 
 export function SkillsPage(): React.JSX.Element {
   const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
   const [opened, setOpened] = useState<{ id: string; body: Promise<SkillBody | null> } | null>(null)
-  const view = useSkillsView(agent)
+  const state = useSkills()
 
   // Memoized so the pair keeps its identity across re-renders; the dialog
   // closes by itself when the skill disappears from the list.
   const selection = useMemo(() => {
-    if (!opened || view.kind !== 'loaded') return null
-    const skill = view.skills.find((candidate) => candidate.id === opened.id)
+    if (!opened || state.kind !== 'loaded') return null
+    const skill = state.skills[agent].find((candidate) => candidate.id === opened.id)
     return skill ? { skill, body: opened.body } : null
-  }, [view, opened])
-
-  const openSkill = (skill: Skill): void => {
-    setOpened({ id: skill.id, body: loadSkillBody(skill) })
-  }
+  }, [agent, opened, state])
 
   return (
     <>
@@ -81,7 +50,7 @@ export function SkillsPage(): React.JSX.Element {
           value={agent}
           className="scroll-fade my-2 flex min-h-0 flex-col overflow-y-auto px-4 pb-2"
         >
-          {view.kind === 'blank' ? null : view.kind === 'skeleton' ? (
+          {state.kind === 'blank' ? null : state.kind === 'skeleton' ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {Array.from({ length: 8 }, (_, index) => (
                 <Item key={index} className="py-3">
@@ -95,7 +64,7 @@ export function SkillsPage(): React.JSX.Element {
                 </Item>
               ))}
             </div>
-          ) : view.skills.length === 0 ? (
+          ) : state.skills[agent].length === 0 ? (
             <Empty>
               <EmptyHeader>
                 <EmptyTitle>No {AGENTS[agent].label} skills</EmptyTitle>
@@ -107,10 +76,15 @@ export function SkillsPage(): React.JSX.Element {
             </Empty>
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {view.skills.map((skill) => (
+              {state.skills[agent].map((skill) => (
                 <Item
                   key={skill.id}
-                  render={<button type="button" onClick={() => openSkill(skill)} />}
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setOpened({ id: skill.id, body: loadSkillBody(skill) })}
+                    />
+                  }
                   className="cursor-pointer py-3 hover:bg-muted/80"
                 >
                   <ItemMedia className="size-10">

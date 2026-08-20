@@ -1,35 +1,35 @@
 import { toast } from '@renderer/components/ui/toast'
-import { createStore, useStore, type Store } from '@renderer/lib/store'
-import { AGENT_IDS, type AgentId } from '@shared/agent'
+import { createStore, useStore } from '@renderer/lib/store'
+import type { AgentId } from '@shared/agent'
 import type { Skill, SkillBody } from '@shared/skill'
 
-// One store per agent: null until the first load, then the list stays cached
-// across tab switches and revalidates in place.
-function createSkillsStore(agent: AgentId): Store<Skill[] | null> & { revalidate: () => void } {
-  let generation = 0
-  const store = createStore<Skill[] | null>(null, () => revalidate())
+export type SkillsState =
+  | { kind: 'blank' }
+  | { kind: 'skeleton' }
+  | { kind: 'loaded'; skills: Record<AgentId, Skill[]> }
 
-  function revalidate(): void {
-    const id = ++generation
-    window.api.skills.list(agent).then(
-      (skills) => {
-        if (id === generation) store.set(skills)
-      },
-      () => {
-        if (id !== generation) return
-        toast.add({ title: 'Could not load skills', type: 'error' })
-        store.set([])
-      }
-    )
+let generation = 0
+const store = createStore<SkillsState>({ kind: 'blank' }, revalidate)
+
+function revalidate(): void {
+  const id = ++generation
+
+  setTimeout(() => {
+    if (id === generation && store.get().kind === 'blank') store.set({ kind: 'skeleton' })
+  }, 150)
+
+  function load(agent: AgentId): Promise<Skill[]> {
+    return window.api.skills.list(agent).catch(() => {
+      if (id === generation) toast.add({ title: 'Could not load skills', type: 'error' })
+      return []
+    })
   }
 
-  return { ...store, revalidate }
+  void Promise.all([load('claude'), load('codex')]).then(([claude, codex]) => {
+    if (id !== generation) return
+    store.set({ kind: 'loaded', skills: { claude, codex } })
+  })
 }
-
-const stores = {
-  claude: createSkillsStore('claude'),
-  codex: createSkillsStore('codex')
-} satisfies Record<AgentId, Store<Skill[] | null>>
 
 // Successful body reads are cached per skill until the next on-disk change;
 // failed reads resolve null (the detail dialog owns the error message) and
@@ -38,13 +38,11 @@ const bodies = new Map<string, Promise<SkillBody | null>>()
 
 window.api.skills.onChanged(() => {
   bodies.clear()
-  for (const agent of AGENT_IDS) {
-    if (stores[agent].watched()) stores[agent].revalidate()
-  }
+  if (store.watched()) revalidate()
 })
 
-export function useSkills(agent: AgentId): Skill[] | null {
-  return useStore(stores[agent])
+export function useSkills(): SkillsState {
+  return useStore(store)
 }
 
 export function loadSkillBody(skill: Skill): Promise<SkillBody | null> {
