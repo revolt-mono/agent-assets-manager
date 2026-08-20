@@ -32,7 +32,8 @@ const stores = {
 } satisfies Record<AgentId, Store<Skill[] | null>>
 
 // Successful body reads are cached per skill until the next on-disk change;
-// failed reads retry on the next open.
+// failed reads resolve null (the detail dialog owns the error message) and
+// retry on the next open.
 const bodies = new Map<string, Promise<SkillBody | null>>()
 
 window.api.skills.onChanged(() => {
@@ -52,7 +53,6 @@ export function loadSkillBody(skill: Skill): Promise<SkillBody | null> {
   if (cached) return cached
   const body = window.api.skills.get(skill.agent, skill.id).catch(() => {
     bodies.delete(key)
-    toast.add({ title: 'Could not open skill', type: 'error' })
     return null
   })
   bodies.set(key, body)

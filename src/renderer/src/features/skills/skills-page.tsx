@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CubeIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@renderer/components/ui/empty'
@@ -20,19 +20,13 @@ import type { Skill, SkillBody } from '@shared/skill'
 
 const SKELETON_DELAY_MS = 150
 
-type SkillsView =
-  | { kind: 'blank' }
-  | { kind: 'skeleton' }
-  | { kind: 'loaded'; agent: AgentId; skills: Skill[] }
+type SkillsView = { kind: 'blank' } | { kind: 'skeleton' } | { kind: 'loaded'; skills: Skill[] }
 
-// Stale-while-revalidate across tabs: a cold tab keeps the last loaded list
-// (tagged with its agent, so labels stay truthful) on screen until its own
-// list arrives; the skeleton takes over once the load has been pending past
-// SKELETON_DELAY_MS. Blank only ever shows before the very first load.
+// Revisited tabs render instantly from the per-agent store cache; a first
+// load stays blank and shows the skeleton only once it has been pending past
+// SKELETON_DELAY_MS.
 function useSkillsView(agent: AgentId): SkillsView {
   const skills = useSkills(agent)
-  const last = useRef<{ agent: AgentId; skills: Skill[] } | null>(null)
-  if (skills) last.current = { agent, skills }
 
   const pending = skills === null
   const [slow, setSlow] = useState(false)
@@ -46,10 +40,9 @@ function useSkillsView(agent: AgentId): SkillsView {
   }, [pending])
 
   return useMemo(() => {
-    if (skills) return { kind: 'loaded', agent, skills }
-    if (slow) return { kind: 'skeleton' }
-    return last.current ? { kind: 'loaded', ...last.current } : { kind: 'blank' }
-  }, [skills, agent, slow])
+    if (skills) return { kind: 'loaded', skills }
+    return slow ? { kind: 'skeleton' } : { kind: 'blank' }
+  }, [skills, slow])
 }
 
 export function SkillsPage(): React.JSX.Element {
@@ -105,10 +98,10 @@ export function SkillsPage(): React.JSX.Element {
           ) : view.skills.length === 0 ? (
             <Empty>
               <EmptyHeader>
-                <EmptyTitle>No {AGENTS[view.agent].label} skills</EmptyTitle>
+                <EmptyTitle>No {AGENTS[agent].label} skills</EmptyTitle>
                 <EmptyDescription>
                   Put a folder with <code>SKILL.md</code> in{' '}
-                  <code>~/{AGENTS[view.agent].skillsDir.join('/')}</code>.
+                  <code>~/{AGENTS[agent].skillsDir.join('/')}</code>.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

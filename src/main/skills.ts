@@ -26,7 +26,14 @@ export function registerSkills(): () => void {
   const tryWatch = (dir: string, options?: { recursive: boolean }): void => {
     if (watched.has(dir)) return
     try {
-      watched.set(dir, watch(dir, options, changed.notify))
+      const armed = watch(dir, options, changed.notify)
+      // A watcher whose directory disappears dies silently; evict it so the
+      // next list re-arms through this same path.
+      armed.on('error', () => {
+        armed.close()
+        if (watched.get(dir) === armed) watched.delete(dir)
+      })
+      watched.set(dir, armed)
     } catch {
       // directory does not exist yet; retried on the next list
     }
