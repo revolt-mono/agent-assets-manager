@@ -375,7 +375,9 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        "no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        // px/-mx cancel out but keep 2px inside the scroll clip box so focus rings on
+        // edge-flush children aren't clipped horizontally.
+        "no-scrollbar -mx-0.5 flex min-h-0 flex-1 flex-col gap-0 overflow-auto px-0.5 group-data-[collapsible=icon]:overflow-hidden",
         className
       )}
       {...props}
