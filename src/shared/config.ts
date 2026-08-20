@@ -10,14 +10,19 @@ export type DefaultField = {
   options: NonEmpty<SelectOption>
 }
 
-export type FeatureField = {
+// Renderer metadata; each agent catalog extends it with its own persistence bindings.
+export type ToggleField = {
   key: string
   label: string
   description: string
   note: { recommended: 'on' | 'off'; reason: string }
 }
 
-type ClaudeFeatureBinding =
+type CodexToggleField = ToggleField & {
+  table: string | null
+  default: boolean
+}
+type ClaudeToggleBinding =
   | { kind: 'env'; key: string; enabledValue: boolean }
   | { kind: 'setting'; key: string; enabledValue: boolean; defaultValue: boolean }
 
@@ -105,46 +110,87 @@ const codexDefaultFields = [
   }
 ] as const satisfies readonly (DefaultField & { default: string })[]
 
-const codexFeatureFields = [
+// A null TOML table addresses a top-level key.
+const codexToggleFields = [
   {
     key: 'apps',
+    table: 'features',
+    default: true,
     label: 'Apps',
     description: 'Connect ChatGPT apps and connectors.',
-    note: { recommended: 'off', reason: 'random ChatGPT app connectors can bloat the context.' },
-    default: true
+    note: { recommended: 'off', reason: 'random ChatGPT app connectors can bloat the context.' }
   },
   {
     key: 'memories',
+    table: 'features',
+    default: false,
     label: 'Memories',
     description: 'Remember context across sessions.',
     note: {
       recommended: 'off',
       reason: 'carries over conversation context other sessions rarely need.'
-    },
-    default: false
+    }
   },
   {
     key: 'guardian_approval',
+    table: 'features',
+    default: true,
     label: 'Guardian approval',
     description: 'Let a reviewer subagent handle approval requests.',
     note: {
       recommended: 'on',
       reason:
         'skips hand-clicked approvals while still stopping the agent from wrecking your system, though the reviewer burns extra tokens.'
-    },
-    default: true
+    }
   },
   {
     key: 'mentions_v2',
+    table: 'features',
+    default: true,
     label: 'Mentions v2',
     description: 'Unified @-mention popup for files, plugins, and skills.',
     note: {
       recommended: 'off',
       reason: 'makes the @ popup harder to use for what you actually mean.'
-    },
-    default: true
+    }
+  },
+  {
+    key: 'include_permissions_instructions',
+    table: null,
+    default: true,
+    label: 'Permission instructions',
+    description: 'Tell the model about its active sandbox and approval rules.',
+    note: {
+      recommended: 'on',
+      reason:
+        'the model needs the active restrictions and approval path to avoid blocked actions and request access correctly.'
+    }
+  },
+  {
+    key: 'include_apps_instructions',
+    table: null,
+    default: true,
+    label: 'App instructions',
+    description: 'Tell the model how to discover and use available ChatGPT app connectors.',
+    note: {
+      recommended: 'off',
+      reason:
+        'pulls ChatGPT web app connectors into the local development agent and bloats its context with irrelevant tools.'
+    }
+  },
+  {
+    key: 'include_collaboration_mode_instructions',
+    table: null,
+    default: true,
+    label: 'Collaboration mode instructions',
+    description: 'Tell the model how to behave in the active default or plan mode.',
+    note: {
+      recommended: 'on',
+      reason:
+        'mode-specific rules must reach the model or switching modes may not change its behavior.'
+    }
   }
-] as const satisfies readonly (FeatureField & { default: boolean })[]
+] as const satisfies readonly CodexToggleField[]
 
 // Claude Code agent defaults, persisted in ~/.claude/settings.json.
 // `settings` storage is a top-level string key, `env` storage an entry in the
@@ -239,11 +285,9 @@ const claudeDefaultFields = [
   }
 ] as const satisfies readonly (DefaultField & { storage: 'settings' | 'env' })[]
 
-// Toggles always read "enabled means the feature is on". Each binding names a
-// stored control and the boolean value meaning on (an env var stores its
-// boolean as truthy-versus-absent); the feature is on only when every binding
-// agrees, so the DISABLE_* vars invert via enabledValue: false.
-const claudeFeatureFields = [
+// Claude bindings target either the settings root or its env object. Inverted
+// DISABLE_* controls state that false is the value meaning enabled.
+const claudeToggleFields = [
   {
     key: 'claudeAiConnectors',
     bindings: [
@@ -434,8 +478,8 @@ const claudeFeatureFields = [
       reason: 'alternate-screen rendering avoids flicker and adds mouse support in fullscreen.'
     }
   }
-] as const satisfies readonly (FeatureField & {
-  bindings: NonEmpty<ClaudeFeatureBinding>
+] as const satisfies readonly (ToggleField & {
+  bindings: NonEmpty<ClaudeToggleBinding>
 })[]
 
 type DefaultFieldKey<Fields extends readonly DefaultField[]> = Fields[number]['key']
@@ -454,12 +498,12 @@ type DefaultRule<Fields extends readonly DefaultField[]> = {
 
 function defineCatalog<
   const Fields extends NonEmpty<DefaultField>,
-  const Features extends readonly FeatureField[],
+  const Toggles extends readonly ToggleField[],
   const Rules extends readonly DefaultRule<Fields>[]
 >(catalog: {
   defaultFields: Fields
   defaultRules: Rules
-  featureFields: Features
+  toggleFields: Toggles
   baseUrlDescription: string
   apiKeyDescription: string
 }) {
@@ -476,14 +520,14 @@ export const CONFIG_CATALOGS = {
         when: { field: 'model', value: 'haiku' }
       }
     ],
-    featureFields: claudeFeatureFields,
+    toggleFields: claudeToggleFields,
     baseUrlDescription: 'Endpoint speaking the Anthropic Messages API.',
     apiKeyDescription: 'Sent to the configured endpoint; stored in settings.json.'
   }),
   codex: defineCatalog({
     defaultFields: codexDefaultFields,
     defaultRules: [],
-    featureFields: codexFeatureFields,
+    toggleFields: codexToggleFields,
     baseUrlDescription: 'Endpoint speaking the OpenAI Responses API.',
     apiKeyDescription: 'Sent to the configured endpoint; stored in config.toml.'
   })
@@ -498,14 +542,14 @@ export type ProviderValues = {
 type Catalog = typeof CONFIG_CATALOGS
 export type ConfigCatalog<A extends AgentId> = Catalog[A]
 export type ConfigDefaultKey<A extends AgentId> = Catalog[A]['defaultFields'][number]['key']
-export type ConfigFeatureKey<A extends AgentId> = Catalog[A]['featureFields'][number]['key']
+export type ConfigToggleKey<A extends AgentId> = Catalog[A]['toggleFields'][number]['key']
 type AnyConfigCatalog = Catalog[AgentId]
 type CatalogDefaultKey<C extends AnyConfigCatalog> = C['defaultFields'][number]['key']
 type CatalogDefaults<C extends AnyConfigCatalog> = Record<CatalogDefaultKey<C>, string | null>
 
 export type ConfigValues<A extends AgentId> = {
   defaults: Record<ConfigDefaultKey<A>, string | null>
-  features: Record<ConfigFeatureKey<A>, boolean>
+  toggles: Record<ConfigToggleKey<A>, boolean>
   provider: ProviderValues
 }
 

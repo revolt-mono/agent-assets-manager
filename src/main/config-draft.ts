@@ -28,9 +28,9 @@ const providerDraft = Schema.Struct({
   )
 )
 
-export function configDraftSchema<K extends string, F extends string>(
+export function configDraftSchema<K extends string, T extends string>(
   defaultFields: readonly { key: K; options: readonly { value: string }[] }[],
-  featureFields: readonly { key: F }[]
+  toggleFields: readonly { key: T }[]
 ) {
   return Schema.Struct({
     // SAFETY: fromEntries over the complete field lists yields every key.
@@ -41,9 +41,9 @@ export function configDraftSchema<K extends string, F extends string>(
       >
     ),
     // SAFETY: fromEntries over the complete field lists yields every key.
-    features: Schema.Struct(
-      Object.fromEntries(featureFields.map((field) => [field.key, Schema.Boolean])) as Record<
-        F,
+    toggles: Schema.Struct(
+      Object.fromEntries(toggleFields.map((field) => [field.key, Schema.Boolean])) as Record<
+        T,
         typeof Schema.Boolean
       >
     ),

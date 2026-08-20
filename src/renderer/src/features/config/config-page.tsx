@@ -33,10 +33,10 @@ import {
   applyDefaultChange,
   disabledDefaultKeys,
   type ConfigDefaultKey,
-  type ConfigFeatureKey,
+  type ConfigToggleKey,
   type ConfigValues,
   type DefaultField,
-  type FeatureField,
+  type ToggleField,
   type ProviderValues
 } from '@shared/config'
 
@@ -48,7 +48,7 @@ type ConfigEditor<A extends AgentId> = {
   draft: ConfigValues<A> | undefined
   dirty: boolean
   setDefault: (key: ConfigDefaultKey<A>, value: string) => void
-  setFeature: (key: ConfigFeatureKey<A>, enabled: boolean) => void
+  setToggle: (key: ConfigToggleKey<A>, enabled: boolean) => void
   setProvider: (provider: ProviderValues) => void
   save: () => Promise<boolean>
 }
@@ -80,10 +80,10 @@ function useConfigEditor<A extends AgentId>(config: ConfigStore<A>): ConfigEdito
           value
         })
       })),
-    setFeature: (key, enabled) =>
+    setToggle: (key, enabled) =>
       patch((current) => ({
         ...current,
-        features: { ...current.features, [key]: enabled }
+        toggles: { ...current.toggles, [key]: enabled }
       })),
     setProvider: (provider) => patch((current) => ({ ...current, provider })),
     save: async () => {
@@ -213,15 +213,15 @@ function ConfigSections<A extends AgentId>({
 
       <FieldSet className="gap-0">
         <FieldLegend>Features</FieldLegend>
-        {catalog.featureFields
+        {catalog.toggleFields
           .toSorted((left, right) => left.label.localeCompare(right.label))
           .map((field) => (
-            <FeatureRow
+            <ToggleRow
               key={field.key}
               field={field}
-              enabled={draft?.features[field.key] ?? false}
+              enabled={draft?.toggles[field.key] ?? false}
               disabled={!draft}
-              onChange={(enabled) => editor.setFeature(field.key, enabled)}
+              onChange={(enabled) => editor.setToggle(field.key, enabled)}
             />
           ))}
       </FieldSet>
@@ -345,13 +345,13 @@ function DefaultFieldRow({
   )
 }
 
-function FeatureRow({
+function ToggleRow({
   field,
   enabled,
   disabled,
   onChange
 }: {
-  field: FeatureField
+  field: ToggleField
   enabled: boolean
   disabled: boolean
   onChange: (enabled: boolean) => void

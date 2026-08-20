@@ -59,6 +59,12 @@ test('getBool: bare true is true, quoted "true" and comments are handled', () =>
   expect(doc.getBool('features', 'missing')).toBeUndefined()
 })
 
+test('getBool reads top-level booleans', () => {
+  const doc = new TomlDoc('enabled = true\n\n[features]\nenabled = false\n')
+  expect(doc.getBool(null, 'enabled')).toBe(true)
+  expect(doc.getBool('features', 'enabled')).toBe(false)
+})
+
 test('deleteTable removes the header, its entries, and preceding blanks', () => {
   const doc = new TomlDoc(RAW)
   doc.deleteTable('features')

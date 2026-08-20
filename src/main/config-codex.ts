@@ -13,7 +13,7 @@ const FEATURES_TABLE = 'features'
 const PROVIDER_TABLE = 'model_providers.revolt'
 
 const catalog = CONFIG_CATALOGS.codex
-const draftSchema = configDraftSchema(catalog.defaultFields, catalog.featureFields)
+const draftSchema = configDraftSchema(catalog.defaultFields, catalog.toggleFields)
 const decodeDraft = Schema.decodeUnknownEffect(draftSchema)
 
 export type CodexConfig = (typeof draftSchema)['Type']
@@ -36,10 +36,11 @@ export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (input: Co
     doc.set(null, field.key, value)
     changed = true
   }
-  for (const field of catalog.featureFields) {
-    const enabled = next.features[field.key]
-    if (enabled === current.features[field.key]) continue
-    doc.set(FEATURES_TABLE, field.key, enabled)
+  for (const field of catalog.toggleFields) {
+    const enabled = next.toggles[field.key]
+    if (enabled === current.toggles[field.key]) continue
+    if (enabled === field.default) doc.delete(field.table, field.key)
+    else doc.set(field.table, field.key, enabled)
     changed = true
   }
   const provider = next.provider
@@ -84,12 +85,12 @@ function toConfig(doc: TomlDoc): CodexConfig {
         return [field.key, field.options.some((option) => option.value === value) ? value : null]
       })
     ) as CodexConfig['defaults'],
-    features: Object.fromEntries(
-      catalog.featureFields.map((field) => [
+    toggles: Object.fromEntries(
+      catalog.toggleFields.map((field) => [
         field.key,
-        doc.getBool(FEATURES_TABLE, field.key) ?? field.default
+        doc.getBool(field.table, field.key) ?? field.default
       ])
-    ) as CodexConfig['features'],
+    ) as CodexConfig['toggles'],
     provider: {
       enabled: doc.get(null, 'model_provider') === 'revolt',
       baseUrl: doc.get(PROVIDER_TABLE, 'base_url') ?? '',

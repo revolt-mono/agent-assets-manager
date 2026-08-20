@@ -24,7 +24,15 @@ test('a missing config file loads pure defaults', async () => {
   const config = await load()
   expect(config.defaults.model_reasoning_effort).toBe('medium')
   expect(config.defaults.sandbox_mode).toBe('workspace-write')
-  expect(config.features).toMatchObject({ apps: true, memories: false })
+  expect(config.toggles).toEqual({
+    apps: true,
+    memories: false,
+    guardian_approval: true,
+    mentions_v2: true,
+    include_permissions_instructions: true,
+    include_apps_instructions: true,
+    include_collaboration_mode_instructions: true
+  })
   expect(config.provider).toEqual({ enabled: false, baseUrl: '', apiKey: '' })
 })
 
@@ -43,12 +51,12 @@ test('save rewrites only changed entries; hand edits and comments survive', asyn
   )
   const config = await load()
   expect(config.defaults.model_reasoning_effort).toBe('low')
-  expect(config.features.apps).toBe(false)
+  expect(config.toggles.apps).toBe(false)
 
   await save({
     ...config,
     defaults: { ...config.defaults, model_reasoning_effort: 'high' },
-    features: { ...config.features, memories: true }
+    toggles: { ...config.toggles, memories: true }
   })
   expect(await readFile(file, 'utf8')).toBe(
     [
@@ -61,6 +69,59 @@ test('save rewrites only changed entries; hand edits and comments survive', asyn
       'memories = true',
       ''
     ].join('\n')
+  )
+})
+
+test('prompt instruction controls use top-level overrides and drop their on-default', async () => {
+  await writeFile(
+    file,
+    [
+      'foreign = "keep"',
+      'include_permissions_instructions = false # keep me',
+      'include_apps_instructions = true',
+      '',
+      '[features]',
+      'apps = false',
+      ''
+    ].join('\n')
+  )
+  const config = await load()
+  expect(config.toggles.include_permissions_instructions).toBe(false)
+  expect(config.toggles.include_apps_instructions).toBe(true)
+  expect(config.toggles.include_collaboration_mode_instructions).toBe(true)
+
+  await save({
+    ...config,
+    toggles: {
+      ...config.toggles,
+      include_permissions_instructions: true,
+      include_apps_instructions: false,
+      include_collaboration_mode_instructions: false
+    }
+  })
+  expect(await readFile(file, 'utf8')).toBe(
+    [
+      'foreign = "keep"',
+      'include_apps_instructions = false',
+      'include_collaboration_mode_instructions = false',
+      '',
+      '[features]',
+      'apps = false',
+      ''
+    ].join('\n')
+  )
+
+  const updated = await load()
+  await save({
+    ...updated,
+    toggles: {
+      ...updated.toggles,
+      include_apps_instructions: true,
+      include_collaboration_mode_instructions: true
+    }
+  })
+  expect(await readFile(file, 'utf8')).toBe(
+    ['foreign = "keep"', '', '[features]', 'apps = false', ''].join('\n')
   )
 })
 
@@ -78,7 +139,7 @@ test('an unrecognized hand-set value loads as null and survives saves', async ()
   const config = await load()
   expect(config.defaults.model_reasoning_effort).toBeNull()
   // null means "leave the file value alone"
-  await save({ ...config, features: { ...config.features, memories: true } })
+  await save({ ...config, toggles: { ...config.toggles, memories: true } })
   expect(await readFile(file, 'utf8')).toContain('model_reasoning_effort = "turbo"')
 })
 

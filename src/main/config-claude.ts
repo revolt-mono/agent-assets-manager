@@ -8,7 +8,7 @@ import { orElseNotFound } from './runtime'
 export const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
 
 const catalog = CONFIG_CATALOGS.claude
-const draftSchema = configDraftSchema(catalog.defaultFields, catalog.featureFields)
+const draftSchema = configDraftSchema(catalog.defaultFields, catalog.toggleFields)
 const decodeDraft = Schema.decodeUnknownEffect(draftSchema)
 
 export type ClaudeConfig = (typeof draftSchema)['Type']
@@ -48,10 +48,10 @@ export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (input: 
     else values[field.key] = value
     changed = true
   }
-  for (const field of catalog.featureFields) {
-    const enabled = next.features[field.key]
-    if (enabled === current.features[field.key]) continue
-    writeFeature(field, enabled, values, env)
+  for (const field of catalog.toggleFields) {
+    const enabled = next.toggles[field.key]
+    if (enabled === current.toggles[field.key]) continue
+    writeToggle(field, enabled, values, env)
     changed = true
   }
   // These env entries are Claude Code's whole provider switch, so enabling
@@ -117,15 +117,15 @@ function toConfig(settings: ClaudeSettings): ClaudeConfig {
         return [field.key, field.options.some((option) => option.value === value) ? value : null]
       })
     ) as ClaudeConfig['defaults'],
-    features: Object.fromEntries(
-      catalog.featureFields.map((field) => [field.key, readFeature(field, settings)])
-    ) as ClaudeConfig['features'],
+    toggles: Object.fromEntries(
+      catalog.toggleFields.map((field) => [field.key, readToggle(field, settings)])
+    ) as ClaudeConfig['toggles'],
     provider: { enabled: baseUrl !== '' && apiKey !== '', baseUrl, apiKey }
   }
 }
 
-function readFeature(
-  field: (typeof catalog.featureFields)[number],
+function readToggle(
+  field: (typeof catalog.toggleFields)[number],
   settings: ClaudeSettings
 ): boolean {
   return field.bindings.every((binding) => {
@@ -137,10 +137,10 @@ function readFeature(
   })
 }
 
-function writeFeature(
-  field: (typeof catalog.featureFields)[number],
+function writeToggle(
+  field: (typeof catalog.toggleFields)[number],
   enabled: boolean,
-  settings: JsonObject,
+  values: JsonObject,
   env: JsonObject
 ): void {
   for (const binding of field.bindings) {
@@ -148,8 +148,8 @@ function writeFeature(
     if (binding.kind === 'env') {
       if (stored) env[binding.key] = '1'
       else delete env[binding.key]
-    } else if (stored === binding.defaultValue) delete settings[binding.key]
-    else settings[binding.key] = stored
+    } else if (stored === binding.defaultValue) delete values[binding.key]
+    else values[binding.key] = stored
   }
 }
 

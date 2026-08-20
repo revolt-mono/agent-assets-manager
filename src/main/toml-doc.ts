@@ -26,7 +26,7 @@ export class TomlDoc {
 
   // Booleans compare against the raw text so a quoted string like "true"
   // stays falsy, matching how Codex rejects non-boolean values.
-  getBool(table: string, key: string): boolean | undefined {
+  getBool(table: string | null, key: string): boolean | undefined {
     const index = this.indexOf(table, key)
     if (index === -1) return undefined
     return valueOf(this.lines[index]).split('#')[0].trim() === 'true'
