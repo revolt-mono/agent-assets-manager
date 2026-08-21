@@ -1,4 +1,4 @@
-import { Activity, lazy, Suspense, useState } from 'react'
+import { Activity, lazy, startTransition, Suspense, useState } from 'react'
 import { Analytics01Icon, BookOpen01Icon, Settings02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ConfigPage } from '@renderer/features/config/config-page'
@@ -17,19 +17,24 @@ import {
   SidebarProvider
 } from '@renderer/components/ui/sidebar'
 
+const loadSkillsPage = () => import('@renderer/features/skills/skills-page')
+const loadUsagePage = () => import('@renderer/features/usage/usage-page')
+
 const PAGES = [
   { id: 'config', label: 'Config', icon: Settings02Icon },
   {
     id: 'skills',
     label: 'Skills',
     icon: BookOpen01Icon,
-    Page: lazy(() => import('@renderer/features/skills/skills-page'))
+    Page: lazy(loadSkillsPage),
+    preload: loadSkillsPage
   },
   {
     id: 'usage',
     label: 'Usage',
     icon: Analytics01Icon,
-    Page: lazy(() => import('@renderer/features/usage/usage-page'))
+    Page: lazy(loadUsagePage),
+    preload: loadUsagePage
   }
 ] as const
 
@@ -48,7 +53,12 @@ function App(): React.JSX.Element {
               <SidebarMenu>
                 {PAGES.map((item) => (
                   <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton isActive={page.id === item.id} onClick={() => setPage(item)}>
+                    <SidebarMenuButton
+                      isActive={page.id === item.id}
+                      onMouseEnter={'preload' in item ? item.preload : undefined}
+                      onFocus={'preload' in item ? item.preload : undefined}
+                      onClick={() => startTransition(() => setPage(item))}
+                    >
                       <HugeiconsIcon icon={item.icon} strokeWidth={2} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -63,20 +73,18 @@ function App(): React.JSX.Element {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-h-0 overflow-hidden">
-        <Activity mode={page.id === 'config' ? 'visible' : 'hidden'}>
-          <ConfigPage />
-        </Activity>
-        {page.id === 'config' ? null : (
-          <Suspense
-            fallback={
-              <div className="grid min-h-0 flex-1 place-items-center">
-                <Spinner />
-              </div>
-            }
-          >
-            <page.Page />
-          </Suspense>
-        )}
+        <Suspense
+          fallback={
+            <div className="grid min-h-0 flex-1 place-items-center">
+              <Spinner />
+            </div>
+          }
+        >
+          <Activity mode={page.id === 'config' ? 'visible' : 'hidden'}>
+            <ConfigPage />
+          </Activity>
+          {page.id === 'config' ? null : <page.Page />}
+        </Suspense>
       </SidebarInset>
     </SidebarProvider>
   )
