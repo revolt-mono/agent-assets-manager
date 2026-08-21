@@ -155,6 +155,162 @@ const codexToggleFields = [
     }
   },
   {
+    key: 'plugins',
+    table: 'features',
+    default: true,
+    label: 'Plugins',
+    description: 'Load installed plugins and their bundled commands and skills.',
+    note: {
+      recommended: 'off',
+      reason: 'plugins auto-load commands and skills you never picked and bloat the context.'
+    }
+  },
+  {
+    key: 'plugin_sharing',
+    table: 'features',
+    default: true,
+    label: 'Plugin sharing',
+    description: 'Share and install plugins through remote sharing flows.',
+    note: {
+      recommended: 'off',
+      reason: 'sharing flows add an upload path for local plugins nobody here needs.'
+    }
+  },
+  {
+    key: 'remote_plugin',
+    table: 'features',
+    default: true,
+    label: 'Remote plugin catalog',
+    description: 'Browse and install plugins from the remote catalog.',
+    note: {
+      recommended: 'off',
+      reason: 'the remote catalog surfaces third-party plugins you never asked for.'
+    }
+  },
+  {
+    key: 'hooks',
+    table: 'features',
+    default: true,
+    label: 'Hooks',
+    description: 'Run lifecycle hooks loaded from hooks.json files.',
+    note: {
+      recommended: 'off',
+      reason:
+        'hooks.json files run arbitrary commands on lifecycle events; keep the surface closed unless you use them.'
+    }
+  },
+  {
+    key: 'skill_search',
+    table: 'features',
+    default: true,
+    label: 'Skill search',
+    description: 'Run shadow-mode skill search experiments and emit metrics.',
+    note: {
+      recommended: 'off',
+      reason: 'shadow-mode experiments burn extra work just to emit telemetry.'
+    }
+  },
+  {
+    key: 'browser_use',
+    table: 'features',
+    default: true,
+    label: 'Browser use',
+    description: 'Let the agent drive a browser through the Browser Use integration.',
+    note: {
+      recommended: 'off',
+      reason: 'a local development agent has no business driving a browser.'
+    }
+  },
+  {
+    key: 'browser_use_external',
+    table: 'features',
+    default: true,
+    label: 'External browser use',
+    description: 'Let Browser Use attach to external browsers.',
+    note: {
+      recommended: 'off',
+      reason: 'attaching to your real browser exposes logged-in sessions to the agent.'
+    }
+  },
+  {
+    key: 'browser_use_full_cdp_access',
+    table: 'features',
+    default: true,
+    label: 'Full CDP access',
+    description: 'Give Browser Use the full Chrome DevTools Protocol surface.',
+    note: {
+      recommended: 'off',
+      reason:
+        'full devtools access lets the agent read anything the browser can, including credentials.'
+    }
+  },
+  {
+    key: 'computer_use',
+    table: 'features',
+    default: true,
+    label: 'Computer use',
+    description: 'Let the agent control the computer through Codex Computer Use.',
+    note: {
+      recommended: 'off',
+      reason: 'full computer control is far more access than a coding agent needs.'
+    }
+  },
+  {
+    key: 'image_generation',
+    table: 'features',
+    default: true,
+    label: 'Image generation',
+    description: 'Generate images through the extension-backed tool.',
+    note: {
+      recommended: 'off',
+      reason: 'image generation adds a tool a coding workflow never calls.'
+    }
+  },
+  {
+    key: 'in_app_browser',
+    table: 'features',
+    default: true,
+    label: 'In-app browser',
+    description: 'Show the in-app browser pane in desktop apps.',
+    note: {
+      recommended: 'off',
+      reason: 'the desktop browser pane goes unused in a terminal workflow.'
+    }
+  },
+  {
+    key: 'in_app_chat',
+    table: 'features',
+    default: true,
+    label: 'In-app chat',
+    description: 'Show the in-app chat pane in desktop apps.',
+    note: {
+      recommended: 'off',
+      reason: 'the desktop chat pane goes unused in a terminal workflow.'
+    }
+  },
+  {
+    key: 'in_app_dictation',
+    table: 'features',
+    default: true,
+    label: 'In-app dictation',
+    description: 'Allow voice dictation in desktop apps.',
+    note: {
+      recommended: 'off',
+      reason: 'dictation goes unused and keeps microphone access in play.'
+    }
+  },
+  {
+    key: 'in_app_updates',
+    table: 'features',
+    default: true,
+    label: 'In-app updates',
+    description: 'Let desktop apps install their own updates.',
+    note: {
+      recommended: 'off',
+      reason: 'silent in-app installs bypass the package manager you already use for updates.'
+    }
+  },
+  {
     key: 'include_permissions_instructions',
     table: null,
     default: true,
