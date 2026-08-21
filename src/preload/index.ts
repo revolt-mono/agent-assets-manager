@@ -3,6 +3,16 @@ import type { AgentId } from '../shared/agent'
 import type { RendererApi } from '../shared/api'
 import type { UpdateState } from '../shared/update'
 
+window.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => ipcRenderer.send('renderer:ready'))
+    })
+  },
+  { once: true }
+)
+
 const api: RendererApi = {
   platform:
     process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'other',

@@ -95,7 +95,7 @@ function aggregate(range: Range, { at, buckets }: UsageData) {
   return { points, totals, rows: [...rows.values()] }
 }
 
-export function UsagePage(): React.JSX.Element {
+export default function UsagePage(): React.JSX.Element {
   const [range, setRange] = useState<Range>(RANGES[0])
   const data = useUsage()
   const [refreshing, setRefreshing] = useState(false)

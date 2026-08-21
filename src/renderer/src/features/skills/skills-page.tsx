@@ -18,7 +18,7 @@ import { loadSkillBody, useSkills } from '@renderer/features/skills/store'
 import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '@shared/agent'
 import type { SkillBody } from '@shared/skill'
 
-export function SkillsPage(): React.JSX.Element {
+export default function SkillsPage(): React.JSX.Element {
   const [agent, setAgent] = useState<AgentId>(AGENT_IDS[0])
   const [opened, setOpened] = useState<{ id: string; body: Promise<SkillBody | null> } | null>(null)
   const state = useSkills()

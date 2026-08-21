@@ -1,12 +1,21 @@
-import { app, shell, BrowserWindow, Menu, type BrowserWindowConstructorOptions } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  type BrowserWindowConstructorOptions
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { profileBoot } from './boot-profile'
 import { registerConfig } from './config'
 import { runtime } from './runtime'
 import { registerSkills } from './skills'
-import { registerUpdater } from './updater'
 import { registerUsage } from './usage'
+
+let bootProfilePending = process.env['VOLT_BOOT_PROFILE'] === '1'
 
 function createWindow(): void {
   const options: BrowserWindowConstructorOptions = {
@@ -29,8 +38,12 @@ function createWindow(): void {
     options.trafficLightPosition = { x: 16, y: 16 }
   }
   const mainWindow = new BrowserWindow(options)
+  if (bootProfilePending) {
+    bootProfilePending = false
+    void profileBoot(mainWindow)
+  }
 
-  mainWindow.on('ready-to-show', () => {
+  mainWindow.once('ready-to-show', () => {
     mainWindow.show()
   })
 
@@ -95,7 +108,9 @@ app.whenReady().then(() => {
   const stopSkills = registerSkills()
   const stopConfig = registerConfig()
   registerUsage()
-  registerUpdater()
+  ipcMain.once('renderer:ready', () => {
+    void import('./updater').then(({ registerUpdater }) => registerUpdater())
+  })
   app.on('will-quit', () => {
     stopSkills()
     stopConfig()
