@@ -11,12 +11,15 @@
 
 ```
 src/
-├── main               electron main process: ipc handlers plus file watchers
+├── main               electron main process: typed ipc handlers, resource lifetimes, and file watchers
+│   ├── ipc.ts         schema-decoding adapters for ipc methods and renderer/main events
 │   ├── config*.ts     agent config io: ipc boundary, claude settings.json, codex config.toml, comment-preserving toml line editor
 │   ├── skills.ts      skill folders: listing, frontmatter, uninstall/open/reveal
 │   └── usage*.ts      usage-logs parses session jsonl into events; usage prices, caches per file, and buckets them for the renderer
 ├── preload            contextBridge exposing the typed RendererApi over ipc
-├── shared             ipc contracts: agent ids, config field catalogs, skill and usage types
+├── shared
+│   ├── ipc*.ts        runtime schemas plus typed method and event channel contracts
+│   └── *.ts           renderer api, agent ids, config catalogs, and domain types
 └── renderer/src
     ├── features       one vertical slice per page (config, skills, usage), each a page component plus an ipc-backed store
     ├── components     app chrome (PageHeader, AgentTabsList, logos, IconSwap); ui/ is vendored shadcn
