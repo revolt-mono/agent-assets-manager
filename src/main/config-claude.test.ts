@@ -1,16 +1,19 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { Schema } from 'effect'
 import { beforeAll, expect, test } from 'vitest'
 import { applyDefaultChange, CONFIG_CATALOGS, disabledDefaultKeys } from '../shared/config'
+import { CONFIG_SCHEMAS } from '../shared/ipc-schema'
 import type { ClaudeConfig } from './config-claude'
 import { runtime } from './runtime'
 
 let api: typeof import('./config-claude')
 let file: string
 const load = (): Promise<ClaudeConfig> => runtime.runPromise(api.loadClaudeConfig)
-const save = (values: ClaudeConfig): Promise<void> =>
-  runtime.runPromise(api.saveClaudeConfig(values))
+const decode = Schema.decodeUnknownSync(CONFIG_SCHEMAS.claude)
+const save = async (values: ClaudeConfig): Promise<void> =>
+  runtime.runPromise(api.saveClaudeConfig(decode(values)))
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-home-'))

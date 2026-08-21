@@ -1,8 +1,6 @@
-export type UpdateState =
-  | { status: 'idle' }
-  | { status: 'available'; version: string }
-  | { status: 'downloading'; version: string; percent: number }
-  | { status: 'downloaded'; version: string }
+import type { UpdateState as UpdateStateSchema } from './ipc-schema'
+
+export type UpdateState = typeof UpdateStateSchema.Type
 
 export type UpdateApi = {
   /** Pushed on every transition; main replays the current state on subscribe. */

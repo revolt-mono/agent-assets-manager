@@ -1,12 +1,11 @@
 import { Effect, type FileSystem, Semaphore } from 'effect'
 import { watch, type FSWatcher } from 'fs'
 import { basename, dirname } from 'path'
-import { ipcMain } from 'electron'
-import { AGENT_IDS, parseAgent, type AgentId } from '../shared/agent'
-import type { ConfigPayload } from '../shared/config'
+import { AGENT_IDS, type AgentId } from '../shared/agent'
 import { debouncedBroadcast } from './broadcast'
-import { CLAUDE_FILE, loadClaudeConfig, saveClaudeConfig } from './config-claude'
-import { CODEX_FILE, loadCodexConfig, saveCodexConfig } from './config-codex'
+import { CLAUDE_FILE, loadClaudeConfig, saveClaudeConfig, type ClaudeConfig } from './config-claude'
+import { CODEX_FILE, loadCodexConfig, saveCodexConfig, type CodexConfig } from './config-codex'
+import { handleIpc } from './ipc'
 import { runtime } from './runtime'
 
 export function registerConfig(): () => void {
@@ -47,32 +46,27 @@ export function registerConfig(): () => void {
     claude: {
       file: CLAUDE_FILE,
       load: () => locked(loadClaudeConfig),
-      save: (input: ConfigPayload) => locked(saveClaudeConfig(input))
+      save: (input: ClaudeConfig) => locked(saveClaudeConfig(input))
     },
     codex: {
       file: CODEX_FILE,
       load: () => locked(loadCodexConfig),
-      save: (input: ConfigPayload) => locked(saveCodexConfig(input))
+      save: (input: CodexConfig) => locked(saveCodexConfig(input))
     }
-  } satisfies Record<
-    AgentId,
-    {
-      file: string
-      load: () => Promise<ConfigPayload>
-      save: (input: ConfigPayload) => Promise<void>
-    }
-  >
+  }
 
-  ipcMain.handle('config:get', (_event, agent: string) => backends[parseAgent(agent)].load())
-  // each writer decodes the untrusted payload before touching disk
-  ipcMain.handle('config:save', (_event, agent: string, input: ConfigPayload) =>
-    backends[parseAgent(agent)].save(input)
-  )
+  const stopHandlers = [
+    handleIpc('config:claude:get', () => backends.claude.load()),
+    handleIpc('config:claude:save', (input) => backends.claude.save(input)),
+    handleIpc('config:codex:get', () => backends.codex.load()),
+    handleIpc('config:codex:save', (input) => backends.codex.save(input))
+  ]
 
   ensureWatch()
 
   return () => {
     for (const agent of AGENT_IDS) broadcasts[agent].stop()
     for (const watcher of watchers.values()) watcher.close()
+    for (const stop of stopHandlers) stop()
   }
 }

@@ -1,7 +1,12 @@
 import { toast } from '@renderer/components/ui/toast'
 import { createStore, latestWins, type Store } from '@renderer/lib/store'
 import type { AgentId } from '@shared/agent'
-import { CONFIG_CATALOGS, type ConfigCatalog, type ConfigValues } from '@shared/config'
+import {
+  CONFIG_CATALOGS,
+  type ConfigAgentApi,
+  type ConfigCatalog,
+  type ConfigValues
+} from '@shared/config'
 
 export type ConfigStore<A extends AgentId> = {
   catalog: ConfigCatalog<A>
@@ -13,8 +18,8 @@ type WatchedConfigStore<A extends AgentId> = ConfigStore<A> & { onChanged: () =>
 type ConfigStores = { [A in AgentId]: ConfigStore<A> }
 
 function createConfigStore<A extends AgentId>(
-  agent: A,
-  catalog: ConfigCatalog<A>
+  catalog: ConfigCatalog<A>,
+  api: ConfigAgentApi<A>
 ): WatchedConfigStore<A> {
   const values = createStore<ConfigValues<A> | undefined>(undefined, () => revalidate())
   // A newer revalidate (or a landed save) supersedes the in-flight read so a
@@ -23,7 +28,7 @@ function createConfigStore<A extends AgentId>(
 
   function revalidate(): void {
     void inflight.run(
-      () => window.api.config.get(agent),
+      api.get,
       (next) => {
         // The save echo and unmanaged-key file churn arrive as deep-equal
         // snapshots; keep the old reference so the page's identity-keyed
@@ -39,7 +44,7 @@ function createConfigStore<A extends AgentId>(
   // echo. On failure it re-reads the file to show what actually stuck.
   const save = async (next: ConfigValues<A>): Promise<void> => {
     try {
-      await window.api.config.save(agent, next)
+      await api.save(next)
     } catch (error) {
       revalidate()
       throw error
@@ -60,8 +65,8 @@ function createConfigStore<A extends AgentId>(
 }
 
 const watchedConfigStores = {
-  claude: createConfigStore('claude', CONFIG_CATALOGS.claude),
-  codex: createConfigStore('codex', CONFIG_CATALOGS.codex)
+  claude: createConfigStore(CONFIG_CATALOGS.claude, window.api.config.claude),
+  codex: createConfigStore(CONFIG_CATALOGS.codex, window.api.config.codex)
 } satisfies { [A in AgentId]: WatchedConfigStore<A> }
 
 window.api.config.onChanged((agent) => watchedConfigStores[agent].onChanged())

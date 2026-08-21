@@ -1,13 +1,40 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentId } from '../shared/agent'
 import type { RendererApi } from '../shared/api'
-import type { UpdateState } from '../shared/update'
+import type {
+  IpcMainEvent,
+  IpcMainEventChannel,
+  IpcMethodChannel,
+  IpcRendererEvent,
+  IpcRendererEventChannel,
+  IpcRequest,
+  IpcResult
+} from '../shared/ipc'
+
+const invoke = <C extends IpcMethodChannel>(
+  channel: C,
+  ...request: IpcRequest<C>
+): Promise<IpcResult<C>> => ipcRenderer.invoke(channel, ...request)
+
+const listen = <C extends IpcMainEventChannel>(
+  channel: C,
+  callback: (...payload: IpcMainEvent<C>) => void
+): (() => void) => {
+  const listener = (_event: Electron.IpcRendererEvent, ...payload: IpcMainEvent<C>): void =>
+    callback(...payload)
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
+}
+
+const send = <C extends IpcRendererEventChannel>(
+  channel: C,
+  ...payload: IpcRendererEvent<C>
+): void => ipcRenderer.send(channel, ...payload)
 
 window.addEventListener(
   'DOMContentLoaded',
   () => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => ipcRenderer.send('renderer:ready'))
+      requestAnimationFrame(() => send('renderer:ready'))
     })
   },
   { once: true }
@@ -17,44 +44,35 @@ const api: RendererApi = {
   platform:
     process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'other',
   skills: {
-    list: (agent) => ipcRenderer.invoke('skills:list', agent),
-    get: (agent, id) => ipcRenderer.invoke('skills:get', agent, id),
-    uninstall: (agent, id) => ipcRenderer.invoke('skills:uninstall', agent, id),
-    open: (agent, id) => ipcRenderer.invoke('skills:open', agent, id),
-    reveal: (agent, id) => ipcRenderer.invoke('skills:reveal', agent, id),
-    onChanged: (callback) => {
-      ipcRenderer.on('skills:changed', callback)
-      return () => {
-        ipcRenderer.removeListener('skills:changed', callback)
-      }
-    }
+    list: (agent) => invoke('skills:list', agent),
+    get: (agent, id) => invoke('skills:get', agent, id),
+    uninstall: (agent, id) => invoke('skills:uninstall', agent, id),
+    open: (agent, id) => invoke('skills:open', agent, id),
+    reveal: (agent, id) => invoke('skills:reveal', agent, id),
+    onChanged: (callback) => listen('skills:changed', callback)
   },
   config: {
-    get: (agent) => ipcRenderer.invoke('config:get', agent),
-    save: (agent, values) => ipcRenderer.invoke('config:save', agent, values),
-    onChanged: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, agent: AgentId): void => callback(agent)
-      ipcRenderer.on('config:changed', listener)
-      return () => {
-        ipcRenderer.removeListener('config:changed', listener)
-      }
-    }
+    claude: {
+      get: () => invoke('config:claude:get'),
+      save: (values) => invoke('config:claude:save', values)
+    },
+    codex: {
+      get: () => invoke('config:codex:get'),
+      save: (values) => invoke('config:codex:save', values)
+    },
+    onChanged: (callback) => listen('config:changed', callback)
   },
   usage: {
-    get: (fresh) => ipcRenderer.invoke('usage:get', fresh)
+    get: (fresh) => invoke('usage:get', fresh)
   },
   update: {
     observe: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, state: UpdateState): void =>
-        callback(state)
-      ipcRenderer.on('update:changed', listener)
+      const stop = listen('update:changed', callback)
       // announce after attaching so main's current-state reply cannot be missed
-      ipcRenderer.send('update:subscribe')
-      return () => {
-        ipcRenderer.removeListener('update:changed', listener)
-      }
+      send('update:subscribe')
+      return stop
     },
-    proceed: () => ipcRenderer.send('update:proceed')
+    proceed: () => send('update:proceed')
   }
 }
 

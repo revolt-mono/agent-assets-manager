@@ -1,10 +1,10 @@
 import { appendFile, mkdir, mkdtemp, utimes, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { beforeAll, expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test } from 'vitest'
 import type { UsageBucket } from '../shared/usage'
 import { invokeIpc } from './electron-stub'
-import { registerUsage } from './usage'
+import { makeUsageLoader, registerUsage } from './usage'
 
 function claudeLine(
   id: string,
@@ -30,11 +30,12 @@ function claudeLine(
 }
 
 let claudeLog: string
+let stopUsage: () => void
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'usage-home-'))
   process.env.HOME = home
-  registerUsage()
+  stopUsage = registerUsage()
 
   const projects = join(home, '.claude', 'projects', 'proj')
   await mkdir(projects, { recursive: true })
@@ -77,6 +78,8 @@ beforeAll(async () => {
   )
 })
 
+afterAll(() => stopUsage())
+
 const HOUR = Date.parse('2026-01-02T03:00:00Z')
 
 test('report skips stale logs, dedupes resumed sessions, resolves aliases, and prices buckets', async () => {
@@ -108,4 +111,46 @@ test('a grown log file is re-read on the next sweep', async () => {
   // report stays sorted by hour, so the new bucket lands last
   expect(buckets[2]).toMatchObject({ hour: Date.parse('2026-01-02T05:00:00Z'), agent: 'claude' })
   expect(buckets[2].cost).toBeCloseTo(0.5) // cache reads at $0.5/M
+})
+
+test('cached loads coalesce and forced refresh stays authoritative', async () => {
+  const scans: Array<{
+    cache: number
+    resolve: (result: { cache: number; buckets: UsageBucket[] }) => void
+  }> = []
+  const load = makeUsageLoader(
+    () => 0,
+    (cache) => {
+      const { promise, resolve } = Promise.withResolvers<{
+        cache: number
+        buckets: UsageBucket[]
+      }>()
+      scans.push({ cache, resolve })
+      return promise
+    }
+  )
+
+  const first = load(false)
+  const duplicate = load(false)
+  const forced = load(true)
+  await Promise.resolve()
+  expect(scans.map((scan) => scan.cache)).toEqual([0])
+
+  scans[0].resolve({ cache: 1, buckets: [] })
+  await Promise.all([first, duplicate])
+  await Promise.resolve()
+  expect(scans.map((scan) => scan.cache)).toEqual([0, 0])
+
+  const afterRefresh = load(false)
+  scans[1].resolve({ cache: 2, buckets: [] })
+  await forced
+  await Promise.resolve()
+  expect(scans.map((scan) => scan.cache)).toEqual([0, 0, 2])
+
+  scans[2].resolve({ cache: 3, buckets: [] })
+  await afterRefresh
+})
+
+test('rejects an invalid cache policy at the ipc boundary', async () => {
+  await expect(invokeIpc('usage:get', 'false')).rejects.toThrow()
 })

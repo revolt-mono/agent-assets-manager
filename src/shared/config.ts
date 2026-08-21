@@ -579,10 +579,11 @@ export function applyDefaultChange<C extends AnyConfigCatalog>(input: {
   )
 }
 
-export type ConfigPayload = { [A in AgentId]: ConfigValues<A> }[AgentId]
+export type ConfigAgentApi<A extends AgentId> = {
+  get: () => Promise<ConfigValues<A>>
+  save: (values: ConfigValues<A>) => Promise<void>
+}
 
-export type ConfigApi = {
-  get: <A extends AgentId>(agent: A) => Promise<ConfigValues<A>>
-  save: <A extends AgentId>(agent: A, values: ConfigValues<A>) => Promise<void>
+export type ConfigApi = { [A in AgentId]: ConfigAgentApi<A> } & {
   onChanged: (callback: (agent: AgentId) => void) => () => void
 }

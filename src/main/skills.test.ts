@@ -48,7 +48,8 @@ test('list parses frontmatter and skips anything that is not a skill folder', as
 })
 
 test('get returns the body without frontmatter and the raw file with it', async () => {
-  const body: SkillBody = await invokeIpc('skills:get', 'claude', 'commit')
+  const [skill] = await invokeIpc('skills:list', 'claude')
+  const body: SkillBody = await invokeIpc('skills:get', 'claude', skill.id)
   expect(body.markdown).toBe('\n# Commit\n\nbody text\n')
   expect(body.raw).toBe(COMMIT_RAW)
 })
@@ -58,11 +59,9 @@ test('an agent without a skills directory lists as empty', async () => {
 })
 
 test('ids that could escape the skills root are rejected', async () => {
-  await expect(invokeIpc('skills:uninstall', 'claude', '../../evil')).rejects.toThrow(
-    'Invalid skill id'
-  )
+  await expect(invokeIpc('skills:uninstall', 'claude', '../../evil')).rejects.toThrow()
   await expect(invokeIpc('skills:get', 'claude', 'ghost')).rejects.toThrow('Skill not found')
-  expect(() => invokeIpc('skills:list', 'gemini')).toThrow('Unknown agent')
+  await expect(invokeIpc('skills:list', 'gemini')).rejects.toThrow()
 })
 
 test('uninstall removes the skill folder', async () => {

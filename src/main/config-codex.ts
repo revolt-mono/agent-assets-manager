@@ -1,9 +1,8 @@
-import { Data, Effect, FileSystem, Schema } from 'effect'
+import { Data, Effect, FileSystem } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { parse } from 'smol-toml'
-import { CONFIG_CATALOGS, type ConfigPayload, type ProviderValues } from '../shared/config'
-import { configDraftSchema } from './config-draft'
+import { CONFIG_CATALOGS, type ConfigValues, type ProviderValues } from '../shared/config'
 import { orElseNotFound } from './runtime'
 import { TomlDoc } from './toml-doc'
 
@@ -13,37 +12,33 @@ const FEATURES_TABLE = 'features'
 const PROVIDER_TABLE = 'model_providers.revolt'
 
 const catalog = CONFIG_CATALOGS.codex
-const draftSchema = configDraftSchema(catalog.defaultFields, catalog.toggleFields)
-const decodeDraft = Schema.decodeUnknownEffect(draftSchema)
 
-export type CodexConfig = (typeof draftSchema)['Type']
+export type CodexConfig = ConfigValues<'codex'>
 
 class CodexConfigError extends Data.TaggedError('CodexConfigError')<{
   readonly message: string
 }> {}
 
-// Parses the untrusted IPC draft against the catalog schema, then writes
-// changed entries in one pass; fails before touching disk.
-export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (input: ConfigPayload) {
-  const next = yield* decodeDraft(input)
+// Writes changed entries in one pass after the IPC boundary has decoded the draft.
+export const saveCodexConfig = Effect.fn('saveCodexConfig')(function* (input: CodexConfig) {
   const fs = yield* FileSystem.FileSystem
   const doc = yield* loadDocument()
   const current = toConfig(doc)
   let changed = false
   for (const field of catalog.defaultFields) {
-    const value = next.defaults[field.key]
+    const value = input.defaults[field.key]
     if (value === null || value === current.defaults[field.key]) continue
     doc.set(null, field.key, value)
     changed = true
   }
   for (const field of catalog.toggleFields) {
-    const enabled = next.toggles[field.key]
+    const enabled = input.toggles[field.key]
     if (enabled === current.toggles[field.key]) continue
     if (enabled === field.default) doc.delete(field.table, field.key)
     else doc.set(field.table, field.key, enabled)
     changed = true
   }
-  const provider = next.provider
+  const provider = input.provider
   if (
     provider.enabled !== current.provider.enabled ||
     provider.baseUrl !== current.provider.baseUrl ||

@@ -1,17 +1,14 @@
 import { Data, Effect, FileSystem, Option, Schema } from 'effect'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { CONFIG_CATALOGS, type ConfigPayload } from '../shared/config'
-import { configDraftSchema } from './config-draft'
+import { CONFIG_CATALOGS, type ConfigValues } from '../shared/config'
 import { orElseNotFound } from './runtime'
 
 export const CLAUDE_FILE = join(homedir(), '.claude', 'settings.json')
 
 const catalog = CONFIG_CATALOGS.claude
-const draftSchema = configDraftSchema(catalog.defaultFields, catalog.toggleFields)
-const decodeDraft = Schema.decodeUnknownEffect(draftSchema)
 
-export type ClaudeConfig = (typeof draftSchema)['Type']
+export type ClaudeConfig = ConfigValues<'claude'>
 
 class ClaudeSettingsError extends Data.TaggedError('ClaudeSettingsError')<{
   readonly message: string
@@ -31,10 +28,8 @@ const decodeObject = Schema.decodeUnknownEffect(objectSchema)
 const decodeString = Schema.decodeUnknownOption(Schema.String)
 const decodeBoolean = Schema.decodeUnknownOption(Schema.Boolean)
 
-// Parses the untrusted IPC draft against the catalog schema, then writes
-// changed entries in one pass; fails before touching disk.
-export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (input: ConfigPayload) {
-  const next = yield* decodeDraft(input)
+// Writes changed entries in one pass after the IPC boundary has decoded the draft.
+export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (input: ClaudeConfig) {
   const fs = yield* FileSystem.FileSystem
   const settings = yield* loadSettings()
   const current = toConfig(settings)
@@ -42,21 +37,21 @@ export const saveClaudeConfig = Effect.fn('saveClaudeConfig')(function* (input: 
   const env = { ...settings.env }
   let changed = false
   for (const field of catalog.defaultFields) {
-    const value = next.defaults[field.key]
+    const value = input.defaults[field.key]
     if (value === null || value === current.defaults[field.key]) continue
     if (field.storage === 'env') env[field.key] = value
     else values[field.key] = value
     changed = true
   }
   for (const field of catalog.toggleFields) {
-    const enabled = next.toggles[field.key]
+    const enabled = input.toggles[field.key]
     if (enabled === current.toggles[field.key]) continue
     writeToggle(field, enabled, values, env)
     changed = true
   }
   // These env entries are Claude Code's whole provider switch, so enabling
   // writes both and disabling deletes both.
-  const provider = next.provider
+  const provider = input.provider
   if (
     provider.enabled !== current.provider.enabled ||
     provider.baseUrl !== current.provider.baseUrl ||

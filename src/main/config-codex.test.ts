@@ -1,14 +1,18 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { Schema } from 'effect'
 import { beforeAll, expect, test } from 'vitest'
+import { CONFIG_SCHEMAS } from '../shared/ipc-schema'
 import type { CodexConfig } from './config-codex'
 import { runtime } from './runtime'
 
 let api: typeof import('./config-codex')
 let file: string
 const load = (): Promise<CodexConfig> => runtime.runPromise(api.loadCodexConfig)
-const save = (values: CodexConfig): Promise<void> => runtime.runPromise(api.saveCodexConfig(values))
+const decode = Schema.decodeUnknownSync(CONFIG_SCHEMAS.codex)
+const save = async (values: CodexConfig): Promise<void> =>
+  runtime.runPromise(api.saveCodexConfig(decode(values)))
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'codex-home-'))

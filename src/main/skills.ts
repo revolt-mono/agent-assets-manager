@@ -1,15 +1,17 @@
-import { Data, Effect, FileSystem, Option } from 'effect'
+import { Data, Effect, FileSystem, Option, Schema } from 'effect'
 import { watch, type FSWatcher } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { ipcMain, shell } from 'electron'
-import { AGENT_IDS, AGENTS, parseAgent, type AgentId } from '../shared/agent'
-import type { Skill, SkillBody } from '../shared/skill'
+import { shell } from 'electron'
+import { AGENT_IDS, AGENTS, type AgentId } from '../shared/agent'
+import { SkillId as SkillIdSchema } from '../shared/ipc-schema'
+import type { Skill, SkillBody, SkillId } from '../shared/skill'
 import { debouncedBroadcast } from './broadcast'
+import { handleIpc } from './ipc'
 import { orElseNotFound, runtime } from './runtime'
 
 const SKILL_FILE = 'SKILL.md'
-const ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
+const decodeSkillId = Schema.decodeUnknownOption(SkillIdSchema)
 
 class SkillError extends Data.TaggedError('SkillError')<{
   readonly message: string
@@ -49,29 +51,25 @@ export function registerSkills(): () => void {
     tryWatch(root, { recursive: true })
   }
 
-  ipcMain.handle('skills:list', (_event, agent) => {
-    const parsed = parseAgent(agent)
-    watchAgent(parsed)
-    return runtime.runPromise(listSkills(parsed))
-  })
-  ipcMain.handle('skills:get', (_event, agent, id) =>
-    runtime.runPromise(Effect.map(requireSkill(parseAgent(agent), id), (loaded) => loaded.body))
-  )
-  ipcMain.handle('skills:uninstall', (_event, agent, id) =>
-    runtime.runPromise(uninstallSkill(parseAgent(agent), id))
-  )
-  ipcMain.handle('skills:open', (_event, agent, id) =>
-    runtime.runPromise(openSkill(parseAgent(agent), id))
-  )
-  ipcMain.handle('skills:reveal', (_event, agent, id) =>
-    runtime.runPromise(revealSkill(parseAgent(agent), id))
-  )
+  const stopHandlers = [
+    handleIpc('skills:list', (agent) => {
+      watchAgent(agent)
+      return runtime.runPromise(listSkills(agent))
+    }),
+    handleIpc('skills:get', (agent, id) =>
+      runtime.runPromise(Effect.map(requireSkill(agent, id), (loaded) => loaded.body))
+    ),
+    handleIpc('skills:uninstall', (agent, id) => runtime.runPromise(uninstallSkill(agent, id))),
+    handleIpc('skills:open', (agent, id) => runtime.runPromise(openSkill(agent, id))),
+    handleIpc('skills:reveal', (agent, id) => runtime.runPromise(revealSkill(agent, id)))
+  ]
 
   for (const agent of AGENT_IDS) watchAgent(agent)
 
   return () => {
     changed.stop()
     for (const watcher of watched.values()) watcher.close()
+    for (const stop of stopHandlers) stop()
   }
 }
 
@@ -84,9 +82,13 @@ const listSkills = Effect.fn('listSkills')(function* (agent: AgentId) {
   const entries = yield* fs.readDirectory(skillsRoot(agent)).pipe(orElseNotFound([]))
   // A valid-looking name that is not a skill folder simply fails its read
   // and drops out as null below.
-  const ids = entries.filter((name) => ID_PATTERN.test(name))
+  const ids: SkillId[] = []
+  for (const entry of entries) {
+    const decoded = decodeSkillId(entry)
+    if (Option.isSome(decoded)) ids.push(decoded.value)
+  }
   const loaded = yield* Effect.forEach(ids, (id) => readSkill(agent, id), {
-    concurrency: 'unbounded'
+    concurrency: 16
   })
   return loaded
     .filter((item) => item !== null)
@@ -94,18 +96,18 @@ const listSkills = Effect.fn('listSkills')(function* (agent: AgentId) {
     .sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const uninstallSkill = Effect.fn('uninstallSkill')(function* (agent: AgentId, id: string) {
+const uninstallSkill = Effect.fn('uninstallSkill')(function* (agent: AgentId, id: SkillId) {
   const fs = yield* FileSystem.FileSystem
   const loaded = yield* requireSkill(agent, id)
   yield* fs.remove(loaded.dir, { recursive: true })
 })
 
-const revealSkill = Effect.fn('revealSkill')(function* (agent: AgentId, id: string) {
+const revealSkill = Effect.fn('revealSkill')(function* (agent: AgentId, id: SkillId) {
   const loaded = yield* requireSkill(agent, id)
   shell.showItemInFolder(loaded.skillFile)
 })
 
-const openSkill = Effect.fn('openSkill')(function* (agent: AgentId, id: string) {
+const openSkill = Effect.fn('openSkill')(function* (agent: AgentId, id: SkillId) {
   const loaded = yield* requireSkill(agent, id)
   // openPath resolves with an error string on failure, but wrap the promise
   // anyway so an undocumented rejection fails as a SkillError, not a defect
@@ -116,15 +118,14 @@ const openSkill = Effect.fn('openSkill')(function* (agent: AgentId, id: string) 
   if (error) return yield* new SkillError({ message: error })
 })
 
-const requireSkill = Effect.fnUntraced(function* (agent: AgentId, id: string) {
-  if (!ID_PATTERN.test(id)) return yield* new SkillError({ message: `Invalid skill id: ${id}` })
+const requireSkill = Effect.fnUntraced(function* (agent: AgentId, id: SkillId) {
   const loaded = yield* readSkill(agent, id)
   if (!loaded) return yield* new SkillError({ message: `Skill not found: ${id}` })
   return loaded
 })
 
 const readSkill = Effect.fnUntraced(
-  function* (agent: AgentId, id: string) {
+  function* (agent: AgentId, id: SkillId) {
     const fs = yield* FileSystem.FileSystem
     const dir = join(skillsRoot(agent), id)
     const skillFile = join(dir, SKILL_FILE)

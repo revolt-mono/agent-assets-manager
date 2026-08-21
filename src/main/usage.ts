@@ -1,8 +1,8 @@
 import { Effect, FileSystem, Option } from 'effect'
 import { homedir } from 'os'
 import { basename, join } from 'path'
-import { ipcMain } from 'electron'
 import { MAX_RANGE_DAYS, type UsageBucket } from '../shared/usage'
+import { handleIpc } from './ipc'
 import { runtime } from './runtime'
 import { LOG_SOURCES, type UsageEvent } from './usage-logs'
 
@@ -158,18 +158,49 @@ function report(events: UsageEvent[]): UsageBucket[] {
   return [...buckets.values()].sort((a, b) => a.hour - b.hour)
 }
 
-export function registerUsage(): void {
+export function makeUsageLoader<C>(
+  emptyCache: () => C,
+  sweep: (cache: C) => Promise<{ cache: C; buckets: UsageBucket[] }>
+): (fresh: boolean) => Promise<UsageBucket[]> {
+  let cache = emptyCache()
+  let normal: Promise<UsageBucket[]> | undefined
+  let queue = Promise.resolve()
+
+  return (fresh) => {
+    if (!fresh && normal) return normal
+    const request = queue.then(async () => {
+      const swept = await sweep(fresh ? emptyCache() : cache)
+      cache = swept.cache
+      return swept.buckets
+    })
+    queue = request.then(
+      () => undefined,
+      () => undefined
+    )
+    if (!fresh) {
+      normal = request
+      const clear = (): void => {
+        if (normal === request) normal = undefined
+      }
+      void request.then(clear, clear)
+    }
+    return request
+  }
+}
+
+export function registerUsage(): () => void {
   // Session logs are immutable once written and only the live session's file
   // grows, so parsed events are cached per file and re-read only when mtime
   // or size changes.
-  let cache = new Map<string, CachedFile>()
-  ipcMain.handle('usage:get', (_event, fresh: boolean) => {
-    if (fresh === true) cache = new Map()
-    return runtime.runPromise(
-      Effect.map(sweepLogs(cache), (swept) => {
-        cache = swept.cache
-        return report(swept.events)
-      })
-    )
-  })
+  const load = makeUsageLoader(
+    () => new Map<string, CachedFile>(),
+    (cache) =>
+      runtime.runPromise(
+        Effect.map(sweepLogs(cache), (swept) => ({
+          cache: swept.cache,
+          buckets: report(swept.events)
+        }))
+      )
+  )
+  return handleIpc('usage:get', load)
 }

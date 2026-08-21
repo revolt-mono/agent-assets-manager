@@ -1,16 +1,10 @@
-import {
-  app,
-  shell,
-  BrowserWindow,
-  ipcMain,
-  Menu,
-  type BrowserWindowConstructorOptions
-} from 'electron'
+import { app, shell, BrowserWindow, Menu, type BrowserWindowConstructorOptions } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { profileBoot } from './boot-profile'
 import { registerConfig } from './config'
+import { onRendererEvent } from './ipc'
 import { runtime } from './runtime'
 import { registerSkills } from './skills'
 import { registerUsage } from './usage'
@@ -29,7 +23,9 @@ function createWindow(): void {
     backgroundColor: '#f4f4f5',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
     }
   }
   if (process.platform === 'linux') options.icon = icon
@@ -107,11 +103,23 @@ app.whenReady().then(() => {
 
   const stopSkills = registerSkills()
   const stopConfig = registerConfig()
-  registerUsage()
-  ipcMain.once('renderer:ready', () => {
-    void import('./updater').then(({ registerUpdater }) => registerUpdater())
-  })
+  const stopUsage = registerUsage()
+  let stopUpdater: (() => void) | undefined
+  let quitting = false
+  const stopReady = onRendererEvent(
+    'renderer:ready',
+    () => {
+      void import('./updater').then(({ registerUpdater }) => {
+        if (!quitting) stopUpdater = registerUpdater()
+      })
+    },
+    { once: true }
+  )
   app.on('will-quit', () => {
+    quitting = true
+    stopReady()
+    stopUpdater?.()
+    stopUsage()
     stopSkills()
     stopConfig()
     void runtime.dispose()
