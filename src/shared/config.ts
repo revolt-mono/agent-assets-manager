@@ -15,7 +15,7 @@ export type ToggleField = {
   key: string
   label: string
   description: string
-  note: { recommended: 'on' | 'off'; reason: string }
+  note: { recommended: boolean; reason: string }
 }
 
 type CodexToggleField = ToggleField & {
@@ -118,7 +118,7 @@ const codexToggleFields = [
     default: true,
     label: 'Apps',
     description: 'Connect ChatGPT apps and connectors.',
-    note: { recommended: 'off', reason: 'random ChatGPT app connectors can bloat the context.' }
+    note: { recommended: false, reason: 'random ChatGPT app connectors can bloat the context.' }
   },
   {
     key: 'memories',
@@ -127,7 +127,7 @@ const codexToggleFields = [
     label: 'Memories',
     description: 'Remember context across sessions.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'carries over conversation context other sessions rarely need.'
     }
   },
@@ -138,7 +138,7 @@ const codexToggleFields = [
     label: 'Guardian approval',
     description: 'Let a reviewer subagent handle approval requests.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'skips hand-clicked approvals while still stopping the agent from wrecking your system, though the reviewer burns extra tokens.'
     }
@@ -150,7 +150,7 @@ const codexToggleFields = [
     label: 'Mentions v2',
     description: 'Unified @-mention popup for files, plugins, and skills.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'makes the @ popup harder to use for what you actually mean.'
     }
   },
@@ -161,7 +161,7 @@ const codexToggleFields = [
     label: 'Plugins',
     description: 'Load installed plugins and their bundled commands and skills.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'plugins auto-load commands and skills you never picked and bloat the context.'
     }
   },
@@ -172,7 +172,7 @@ const codexToggleFields = [
     label: 'Plugin sharing',
     description: 'Share and install plugins through remote sharing flows.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'sharing flows add an upload path for local plugins nobody here needs.'
     }
   },
@@ -183,7 +183,7 @@ const codexToggleFields = [
     label: 'Remote plugin catalog',
     description: 'Browse and install plugins from the remote catalog.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'the remote catalog surfaces third-party plugins you never asked for.'
     }
   },
@@ -194,7 +194,7 @@ const codexToggleFields = [
     label: 'Hooks',
     description: 'Run lifecycle hooks loaded from hooks.json files.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'hooks.json files run arbitrary commands on lifecycle events; keep the surface closed unless you use them.'
     }
@@ -206,7 +206,7 @@ const codexToggleFields = [
     label: 'Skill search',
     description: 'Run shadow-mode skill search experiments and emit metrics.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'shadow-mode experiments burn extra work just to emit telemetry.'
     }
   },
@@ -217,7 +217,7 @@ const codexToggleFields = [
     label: 'Browser use',
     description: 'Let the agent drive a browser through the Browser Use integration.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'a local development agent has no business driving a browser.'
     }
   },
@@ -228,7 +228,7 @@ const codexToggleFields = [
     label: 'External browser use',
     description: 'Let Browser Use attach to external browsers.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'attaching to your real browser exposes logged-in sessions to the agent.'
     }
   },
@@ -239,7 +239,7 @@ const codexToggleFields = [
     label: 'Full CDP access',
     description: 'Give Browser Use the full Chrome DevTools Protocol surface.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'full devtools access lets the agent read anything the browser can, including credentials.'
     }
@@ -251,7 +251,7 @@ const codexToggleFields = [
     label: 'Computer use',
     description: 'Let the agent control the computer through Codex Computer Use.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'full computer control is far more access than a coding agent needs.'
     }
   },
@@ -262,7 +262,7 @@ const codexToggleFields = [
     label: 'Image generation',
     description: 'Generate images through the extension-backed tool.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'image generation adds a tool a coding workflow never calls.'
     }
   },
@@ -273,7 +273,7 @@ const codexToggleFields = [
     label: 'In-app browser',
     description: 'Show the in-app browser pane in desktop apps.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'the desktop browser pane goes unused in a terminal workflow.'
     }
   },
@@ -284,7 +284,7 @@ const codexToggleFields = [
     label: 'In-app chat',
     description: 'Show the in-app chat pane in desktop apps.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'the desktop chat pane goes unused in a terminal workflow.'
     }
   },
@@ -295,7 +295,7 @@ const codexToggleFields = [
     label: 'In-app dictation',
     description: 'Allow voice dictation in desktop apps.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'dictation goes unused and keeps microphone access in play.'
     }
   },
@@ -306,7 +306,7 @@ const codexToggleFields = [
     label: 'In-app updates',
     description: 'Let desktop apps install their own updates.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'silent in-app installs bypass the package manager you already use for updates.'
     }
   },
@@ -317,7 +317,7 @@ const codexToggleFields = [
     label: 'Permission instructions',
     description: 'Tell the model about its active sandbox and approval rules.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'the model needs the active restrictions and approval path to avoid blocked actions and request access correctly.'
     }
@@ -329,7 +329,7 @@ const codexToggleFields = [
     label: 'App instructions',
     description: 'Tell the model how to discover and use available ChatGPT app connectors.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'pulls ChatGPT web app connectors into the local development agent and bloats its context with irrelevant tools.'
     }
@@ -341,7 +341,7 @@ const codexToggleFields = [
     label: 'Collaboration mode instructions',
     description: 'Tell the model how to behave in the active default or plan mode.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'mode-specific rules must reach the model or switching modes may not change its behavior.'
     }
@@ -457,7 +457,7 @@ const claudeToggleFields = [
     label: 'Claude.ai connectors',
     description: 'Auto-fetch and connect MCP connectors from claude.ai.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'claude.ai connectors auto-attach MCP servers you never asked for and bloat the context.'
     }
@@ -470,7 +470,7 @@ const claudeToggleFields = [
     label: 'Artifacts',
     description: 'Offer the Artifact tool that publishes session output to claude.ai.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'publishing session output to claude.ai is never wanted, and the tool wastes prompt space.'
     }
@@ -483,7 +483,7 @@ const claudeToggleFields = [
     label: 'Remote control',
     description: 'Allow remote-control sessions, auto-start, and the in-session toggle.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason:
         'nothing should drive local sessions remotely; turning this off cuts attack surface and prompt bloat.'
     }
@@ -496,7 +496,7 @@ const claudeToggleFields = [
     label: 'Prompt suggestions',
     description: 'Show grayed-out predictions in the prompt input.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'grayed-out predictions distract while typing and add background requests.'
     }
   },
@@ -508,7 +508,7 @@ const claudeToggleFields = [
     label: 'Session recap',
     description: 'Recap what happened when you return after 5+ minutes away.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'the recap burns an extra model call, but catching up at a glance beats rereading scrollback when you juggle sessions or lose the thread easily.'
     }
@@ -521,7 +521,7 @@ const claudeToggleFields = [
     label: 'Switch models on flag',
     description: 'Auto-switch to the fallback model when a safety classifier flags a request.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'a silent model swap changes quality mid-session; pause and decide yourself.'
     }
   },
@@ -538,7 +538,7 @@ const claudeToggleFields = [
     label: 'Wheel scroll acceleration',
     description: 'Speed up mouse-wheel scrolling during fast scrolls in fullscreen mode.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'a constant rate per notch is predictable; acceleration overshoots in fullscreen.'
     }
   },
@@ -550,7 +550,7 @@ const claudeToggleFields = [
     label: 'Nonessential traffic',
     description: 'Send auto-updates, telemetry, error reporting, and other background requests.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'auto-updates, telemetry, and error reporting are background traffic with no value.'
     }
   },
@@ -560,7 +560,7 @@ const claudeToggleFields = [
     label: 'Bundled skills',
     description: 'Ship built-in skills and slash commands like /code-review and /run.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'a blanket disable also removes useful built-in commands; deny unwanted ones individually.'
     }
@@ -571,7 +571,7 @@ const claudeToggleFields = [
     label: 'Claude API skill',
     description: 'Bundled skill that auto-triggers on Anthropic SDK and API code.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'auto-triggers on Anthropic SDK code and injects context you rarely need.'
     }
   },
@@ -581,7 +581,7 @@ const claudeToggleFields = [
     label: 'Claude Code skill',
     description: 'Bundled guide skill that answers Claude Code usage questions.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'usage questions are rare, so the bundled guide skill just wastes context.'
     }
   },
@@ -591,7 +591,7 @@ const claudeToggleFields = [
     label: 'Git instructions',
     description: 'Include the built-in git workflow guidance in the system prompt.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'the built-in git guidance conflicts with your own rules and bloats the prompt.'
     }
   },
@@ -609,7 +609,7 @@ const claudeToggleFields = [
     label: 'Auto memory',
     description: 'Read and write per-project memory notes across sessions.',
     note: {
-      recommended: 'off',
+      recommended: false,
       reason: 'stale project memory leaks into unrelated sessions; manage context yourself.'
     }
   },
@@ -619,7 +619,7 @@ const claudeToggleFields = [
     label: 'Simple system prompt',
     description: 'Collapse the system prompt to a minimal identity-and-cwd version.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason:
         'a minimal prompt saves tokens and interferes less; your own config supplies the rules.'
     }
@@ -630,7 +630,7 @@ const claudeToggleFields = [
     label: 'No-flicker renderer',
     description: 'Render the TUI on the alternate screen with mouse support and no flicker.',
     note: {
-      recommended: 'on',
+      recommended: true,
       reason: 'alternate-screen rendering avoids flicker and adds mouse support in fullscreen.'
     }
   }

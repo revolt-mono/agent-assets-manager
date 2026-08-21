@@ -1,5 +1,10 @@
 import { useRef, useState } from 'react'
-import { InformationCircleIcon, Tick02Icon } from '@hugeicons/core-free-icons'
+import {
+  InformationCircleIcon,
+  MagicWand01Icon,
+  Tick02Icon,
+  Undo02Icon
+} from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -43,38 +48,84 @@ import {
 // One agent's edit session: the draft overlays the saved snapshot it was
 // based on and survives tab switches; a newer snapshot (external file change,
 // or our own save landing) discards it.
+type RecommendationAction = 'apply' | 'restore'
+
 type ConfigEditor<A extends AgentId> = {
   catalog: ConfigStore<A>['catalog']
   draft: ConfigValues<A> | undefined
   dirty: boolean
+  saving: boolean
+  recommendationAction: RecommendationAction
+  toggleRecommendations: () => void
   setDefault: (key: ConfigDefaultKey<A>, value: string) => void
   setToggle: (key: ConfigToggleKey<A>, enabled: boolean) => void
   setProvider: (provider: ProviderValues) => void
   save: () => Promise<boolean>
 }
 
+type ConfigEdit<A extends AgentId> = {
+  base: ConfigValues<A>
+  draft: ConfigValues<A>
+  recommendationAction: RecommendationAction
+}
+
 function useConfigEditor<A extends AgentId>(config: ConfigStore<A>): ConfigEditor<A> {
   const saved = useStore(config.values)
-  const [edit, setEdit] = useState<{
-    base: ConfigValues<A>
-    draft: ConfigValues<A>
-  } | null>(null)
-  const draft = edit && edit.base === saved ? edit.draft : saved
-  const patch = (
-    update: (current: ConfigValues<A>, saved: ConfigValues<A>) => ConfigValues<A>
-  ): void => {
-    if (saved && draft) setEdit({ base: saved, draft: update(draft, saved) })
+  const [edit, setEdit] = useState<ConfigEdit<A> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const activeEdit = edit && edit.base === saved ? edit : null
+  const draft = activeEdit?.draft ?? saved
+  const transition = (update: (current: ConfigEdit<A>) => ConfigEdit<A>): void => {
+    setEdit((previous) => {
+      const base = config.values.get()
+      if (!base) return previous
+      return update(
+        previous?.base === base ? previous : { base, draft: base, recommendationAction: 'apply' }
+      )
+    })
   }
+  const patch = (
+    update: (current: ConfigValues<A>, base: ConfigValues<A>) => ConfigValues<A>
+  ): void =>
+    transition((current) => ({
+      ...current,
+      draft: update(current.draft, current.base)
+    }))
   return {
     catalog: config.catalog,
     draft,
     dirty: draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved),
+    saving,
+    recommendationAction: activeEdit?.recommendationAction ?? 'apply',
+    toggleRecommendations: () =>
+      transition((current) => {
+        switch (current.recommendationAction) {
+          case 'apply':
+            return {
+              ...current,
+              recommendationAction: 'restore',
+              draft: {
+                ...current.draft,
+                toggles: config.catalog.toggleFields.reduce(
+                  (toggles, field) => ({ ...toggles, [field.key]: field.note.recommended }),
+                  current.draft.toggles
+                )
+              }
+            }
+          case 'restore':
+            return {
+              ...current,
+              recommendationAction: 'apply',
+              draft: { ...current.draft, toggles: current.base.toggles }
+            }
+        }
+      }),
     setDefault: (key, value) =>
-      patch((current, saved) => ({
+      patch((current, base) => ({
         ...current,
         defaults: applyDefaultChange({
           catalog: config.catalog,
-          saved: saved.defaults,
+          saved: base.defaults,
           current: current.defaults,
           key,
           value
@@ -87,9 +138,14 @@ function useConfigEditor<A extends AgentId>(config: ConfigStore<A>): ConfigEdito
       })),
     setProvider: (provider) => patch((current) => ({ ...current, provider })),
     save: async () => {
-      if (!draft) return false
-      await config.save(draft)
-      return true
+      if (!draft || saving) return false
+      setSaving(true)
+      try {
+        await config.save(draft)
+        return true
+      } finally {
+        setSaving(false)
+      }
     }
   }
 }
@@ -141,7 +197,7 @@ export function ConfigPage(): React.JSX.Element {
             </Button>
             <Button
               size="sm"
-              disabled={!active.dirty}
+              disabled={!active.dirty || active.saving}
               onClick={save}
               className={cn(
                 'w-full text-white',
@@ -192,6 +248,7 @@ function ConfigSections<A extends AgentId>({
           provider={draft?.provider}
           baseUrlDescription={catalog.baseUrlDescription}
           apiKeyDescription={catalog.apiKeyDescription}
+          disabled={editor.saving}
           onChange={editor.setProvider}
         />
       </FieldSet>
@@ -205,14 +262,32 @@ function ConfigSections<A extends AgentId>({
               key={field.key}
               field={field}
               value={draft?.defaults[field.key] ?? null}
-              disabled={!draft || disabledDefaults?.has(field.key) === true}
+              disabled={!draft || editor.saving || disabledDefaults?.has(field.key) === true}
               onChange={(value) => editor.setDefault(field.key, value)}
             />
           ))}
       </FieldSet>
 
       <FieldSet className="gap-0">
-        <FieldLegend>Features</FieldLegend>
+        <FieldLegend className="flex w-full items-center justify-between">
+          Features
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={!draft || editor.saving}
+            onClick={editor.toggleRecommendations}
+          >
+            <HugeiconsIcon
+              icon={editor.recommendationAction === 'restore' ? Undo02Icon : MagicWand01Icon}
+              strokeWidth={2}
+              data-icon="inline-start"
+            />
+            {editor.recommendationAction === 'restore'
+              ? 'Restore local settings'
+              : 'Apply recommendations'}
+          </Button>
+        </FieldLegend>
         {catalog.toggleFields
           .toSorted((left, right) => left.label.localeCompare(right.label))
           .map((field) => (
@@ -220,7 +295,7 @@ function ConfigSections<A extends AgentId>({
               key={field.key}
               field={field}
               enabled={draft?.toggles[field.key] ?? false}
-              disabled={!draft}
+              disabled={!draft || editor.saving}
               onChange={(enabled) => editor.setToggle(field.key, enabled)}
             />
           ))}
@@ -253,17 +328,19 @@ function ProviderFields({
   provider,
   baseUrlDescription,
   apiKeyDescription,
+  disabled,
   onChange
 }: {
   provider: ProviderValues | undefined
   baseUrlDescription: string
   apiKeyDescription: string
+  disabled: boolean
   onChange: (provider: ProviderValues) => void
 }): React.JSX.Element {
   // Credentials gate the switch: clearing either field turns the provider off,
   // and it cannot be re-enabled until both are filled in again.
   const updateProvider = (partial: Partial<ProviderValues>): void => {
-    if (!provider) return
+    if (!provider || disabled) return
     const next = { ...provider, ...partial }
     onChange(next.baseUrl === '' || next.apiKey === '' ? { ...next, enabled: false } : next)
   }
@@ -276,7 +353,9 @@ function ProviderFields({
         <Switch
           checked={provider?.enabled ?? false}
           disabled={
-            !provider || (!provider.enabled && (provider.baseUrl === '' || provider.apiKey === ''))
+            disabled ||
+            !provider ||
+            (!provider.enabled && (provider.baseUrl === '' || provider.apiKey === ''))
           }
           onToggle={() => updateProvider({ enabled: !provider?.enabled })}
         />
@@ -284,7 +363,7 @@ function ProviderFields({
       <ConfigRow title="Base URL" description={baseUrlDescription}>
         <Input
           value={provider?.baseUrl ?? ''}
-          disabled={!provider}
+          disabled={disabled || !provider}
           placeholder="https://api.example.com/v1"
           spellCheck={false}
           className="w-72"
@@ -295,7 +374,7 @@ function ProviderFields({
         <Input
           type="password"
           value={provider?.apiKey ?? ''}
-          disabled={!provider}
+          disabled={disabled || !provider}
           placeholder="sk-..."
           autoComplete="off"
           className="w-72"
@@ -367,7 +446,8 @@ function ToggleRow({
             </TooltipTrigger>
             <TooltipContent>
               <span>
-                Recommended <span className="font-semibold">{field.note.recommended}</span>:{' '}
+                Recommended{' '}
+                <span className="font-semibold">{field.note.recommended ? 'on' : 'off'}</span>:{' '}
                 {field.note.reason}
               </span>
             </TooltipContent>
