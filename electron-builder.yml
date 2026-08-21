@@ -3,15 +3,17 @@ productName: Volt
 directories:
   buildResources: build
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - out/**/*
+  - resources/icon.png
 asarUnpack:
   - resources/**
+electronLanguages:
+  - en-US
+  - zh-CN
 mac:
+  electronLanguages:
+    - en-US
+    - zh_CN
   target:
     - target: zip
       arch:
